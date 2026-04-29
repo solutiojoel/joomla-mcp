@@ -235,6 +235,45 @@ class JoomlaClient {
             return this.getBaseUrl() + path;
         return this.getAdminUrl(path);
     }
+    buildEntityUrls(entity, id) {
+        switch (entity) {
+            case "article":
+                return {
+                    editUrl: this.getAdminUrl(`index.php?option=com_content&task=article.edit&id=${id}`),
+                    viewUrl: `${this.getBaseUrl()}/index.php?option=com_content&view=article&id=${id}`,
+                };
+            case "category":
+                return {
+                    editUrl: this.getAdminUrl(`index.php?option=com_categories&task=category.edit&id=${id}&extension=com_content`),
+                    viewUrl: `${this.getBaseUrl()}/index.php?option=com_content&view=category&id=${id}`,
+                };
+            case "module":
+                return {
+                    editUrl: this.getAdminUrl(`index.php?option=com_modules&task=module.edit&id=${id}`),
+                    viewUrl: "",
+                };
+            case "menuItem":
+                return {
+                    editUrl: this.getAdminUrl(`index.php?option=com_menus&task=item.edit&id=${id}`),
+                    viewUrl: `${this.getBaseUrl()}/index.php?Itemid=${id}`,
+                };
+            default:
+                return { editUrl: "", viewUrl: "" };
+        }
+    }
+    buildOperationData(entity, id, data) {
+        const { editUrl, viewUrl } = this.buildEntityUrls(entity, id);
+        return {
+            id,
+            title: data.title || "",
+            state: data.state || "",
+            editUrl,
+            viewUrl,
+            warnings: data.warnings || [],
+            verification: data.verification || { attempted: false },
+            ...data,
+        };
+    }
     getCookieHeader() {
         if (this.cookies.size === 0)
             return null;
@@ -1521,6 +1560,38 @@ class JoomlaClient {
             html: result.html,
         };
     }
+    async checkInArticle(id) {
+        const listUrl = this.getAdminUrl("index.php?option=com_content&view=articles");
+        const { html } = await this.getPage(listUrl);
+        const token = this.extractCsrfToken(html);
+        if (!token) {
+            return { success: false, message: "Failed to extract CSRF token" };
+        }
+        const result = await this.postPage(listUrl, {
+            task: "articles.checkin",
+            "cid[]": id,
+            boxchecked: "1",
+            [token.name]: token.value,
+        });
+        const successMsg = /checked in|check-in|article[s]?\s+checked/i.test(result.html);
+        const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
+        const verify = await this.getArticle(id);
+        const article = (verify.data || {});
+        const ok = (successMsg || !errorMsg) && verify.success;
+        return {
+            success: ok,
+            message: ok ? "Article checked in" : (errorMsg ? errorMsg[1].trim() : "Article check-in submitted"),
+            data: this.buildOperationData("article", id, {
+                title: String(article.title || ""),
+                state: String(article.state || ""),
+                verification: {
+                    attempted: true,
+                    existsAfterCheckIn: verify.success,
+                },
+            }),
+            html: result.html,
+        };
+    }
     // ==================== CATEGORIES ====================
     async listCategories(extension = "com_content") {
         const url = this.getAdminUrl(`index.php?option=com_categories&view=categories&extension=${extension}&limit=0`);
@@ -1656,6 +1727,38 @@ class JoomlaClient {
         return {
             success: successMsg,
             message: successMsg ? "Category trashed" : (errorMsg ? errorMsg[1].trim() : "Unknown result"),
+            html: result.html,
+        };
+    }
+    async checkInCategory(id) {
+        const listUrl = this.getAdminUrl("index.php?option=com_categories&view=categories&extension=com_content");
+        const { html } = await this.getPage(listUrl);
+        const token = this.extractCsrfToken(html);
+        if (!token) {
+            return { success: false, message: "Failed to extract CSRF token" };
+        }
+        const result = await this.postPage(listUrl, {
+            task: "categories.checkin",
+            "cid[]": id,
+            boxchecked: "1",
+            [token.name]: token.value,
+        });
+        const successMsg = /checked in|check-in|categor(y|ies)\s+checked/i.test(result.html);
+        const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
+        const verify = await this.getCategory(id);
+        const category = (verify.data || {});
+        const ok = (successMsg || !errorMsg) && verify.success;
+        return {
+            success: ok,
+            message: ok ? "Category checked in" : (errorMsg ? errorMsg[1].trim() : "Category check-in submitted"),
+            data: this.buildOperationData("category", id, {
+                title: String(category.title || ""),
+                state: String(category.published || ""),
+                verification: {
+                    attempted: true,
+                    existsAfterCheckIn: verify.success,
+                },
+            }),
             html: result.html,
         };
     }
@@ -1948,6 +2051,38 @@ class JoomlaClient {
         return {
             success: successMsg,
             message: successMsg ? "Module trashed" : (errorMsg ? errorMsg[1].trim() : "Unknown result"),
+            html: result.html,
+        };
+    }
+    async checkInModule(id) {
+        const listUrl = this.getAdminUrl("index.php?option=com_modules&view=modules");
+        const { html } = await this.getPage(listUrl);
+        const token = this.extractCsrfToken(html);
+        if (!token) {
+            return { success: false, message: "Failed to extract CSRF token" };
+        }
+        const result = await this.postPage(listUrl, {
+            task: "modules.checkin",
+            "cid[]": id,
+            boxchecked: "1",
+            [token.name]: token.value,
+        });
+        const successMsg = /checked in|check-in|module[s]?\s+checked/i.test(result.html);
+        const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
+        const verify = await this.getModule(id);
+        const module = (verify.data || {});
+        const ok = (successMsg || !errorMsg) && verify.success;
+        return {
+            success: ok,
+            message: ok ? "Module checked in" : (errorMsg ? errorMsg[1].trim() : "Module check-in submitted"),
+            data: this.buildOperationData("module", id, {
+                title: String(module.title || ""),
+                state: String(module.published || ""),
+                verification: {
+                    attempted: true,
+                    existsAfterCheckIn: verify.success,
+                },
+            }),
             html: result.html,
         };
     }
@@ -2758,9 +2893,25 @@ class JoomlaClient {
         const result = await this.postPage(listUrl, formData);
         const successMsg = /module[s]?\s+(published|unpublished)|has been/i.test(result.html);
         const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
+        const verify = await this.getModule(id);
+        const module = (verify.data || {});
+        const actualState = String(module.published || "");
+        const verified = verify.success && actualState === state;
         return {
-            success: successMsg,
-            message: successMsg ? `Module ${state === "1" ? "published" : "unpublished"}` : (errorMsg ? errorMsg[1].trim() : "Unknown result"),
+            success: verified,
+            message: verified
+                ? `Module ${state === "1" ? "published" : "unpublished"}`
+                : (errorMsg ? errorMsg[1].trim() : successMsg ? "Module state was not verified after submit" : "Unknown result"),
+            data: this.buildOperationData("module", id, {
+                title: String(module.title || ""),
+                state: actualState,
+                verification: {
+                    attempted: true,
+                    requestedState: state,
+                    actualState,
+                    verified,
+                },
+            }),
             html: result.html,
         };
     }
@@ -3088,12 +3239,17 @@ class JoomlaClient {
             message: verified
                 ? `Menu item ${state === "1" ? "published" : "unpublished"}`
                 : (errorMsg ? errorMsg[1].trim() : successMsg ? `Menu item state was not verified after ${task}` : "Unknown result"),
-            data: {
-                id,
-                requestedState: state,
-                actualState,
+            data: this.buildOperationData("menuItem", id, {
+                title: String(item.title || ""),
+                state: actualState,
+                verification: {
+                    attempted: true,
+                    requestedState: state,
+                    actualState,
+                    verified,
+                },
                 menuType: menuType || "",
-            },
+            }),
             html: result.html,
         };
     }
@@ -3112,9 +3268,21 @@ class JoomlaClient {
         });
         const successMsg = /checked in|check-in|item[s]?\s+checked/i.test(result.html);
         const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
+        const verify = await this.getMenuItem(id);
+        const item = (verify.data || {});
+        const ok = (successMsg || !errorMsg) && verify.success;
         return {
-            success: successMsg || !errorMsg,
-            message: successMsg ? "Menu item checked in" : (errorMsg ? errorMsg[1].trim() : "Menu item check-in submitted"),
+            success: ok,
+            message: ok ? "Menu item checked in" : (errorMsg ? errorMsg[1].trim() : "Menu item check-in submitted"),
+            data: this.buildOperationData("menuItem", id, {
+                title: String(item.title || ""),
+                state: String(item.published || ""),
+                verification: {
+                    attempted: true,
+                    existsAfterCheckIn: verify.success,
+                },
+                menuType: menuType || "",
+            }),
             html: result.html,
         };
     }

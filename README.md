@@ -1,10 +1,20 @@
 # Joomla 3 MCP Server
 
-MCP server for managing a Joomla 3 administrator backend from an MCP client.
+MCP server for automating Joomla 3 administrator workflows through the same HTML forms the backend uses.
+
+This project is designed for safe, repeatable site operations: content updates, menu/module management, Gantry layout automation, component inspection, snapshots, and site build planning.
+
+## How It Works
+
+- Uses Joomla admin pages and form submissions (not direct database writes).
+- Maintains authenticated cookies/sessions after login.
+- Extracts and submits CSRF tokens and preserves existing form fields.
+- Supports dry-run/snapshot workflows on higher-risk operations.
+- Returns structured JSON responses with success/message and operation data.
 
 ## Configuration
 
-Create a `.env` file in this directory:
+Create a `.env` file:
 
 ```env
 JOOMLA_BASE_URL=https://your-site.example
@@ -12,67 +22,93 @@ JOOMLA_USERNAME=your-admin-username
 JOOMLA_PASSWORD=your-admin-password
 ```
 
-`JOOMLA_BASE_URL` can be either the public site root or the administrator URL. Both of these are valid:
+`JOOMLA_BASE_URL` can be either:
 
 ```env
 JOOMLA_BASE_URL=https://your-site.example
 JOOMLA_BASE_URL=https://your-site.example/administrator
 ```
 
-## Build
+## Build and Run
 
 ```sh
 npm install
 npm run build
 ```
 
-## Run
-
-For local development:
+Run server (stdio):
 
 ```sh
 npm start
 ```
 
-To run a non-destructive login/list check against the configured site:
+Smoke check:
 
 ```sh
 npm run smoke
 ```
 
-For an MCP client, point the client at the built stdio server:
+All-tools integration test:
 
 ```sh
-node C:\Users\Jqelp\OneDrive\Desktop\projects\joomla-mcp\dist\index.js
+npm run test:all-tools
 ```
 
-## Current Tools
+For MCP clients, use:
 
-- `joomla_login`
+```sh
+node dist/index.js
+```
+
+## Tool Catalog
+
+The server currently exposes the following tools.
+
+### Session
+
+- `joomla_login`: Authenticate to Joomla admin and initialize server session.
+
+### Articles
+
 - `joomla_list_articles`
 - `joomla_get_article`
 - `joomla_create_article`
 - `joomla_update_article`
-- `joomla_delete_article`
+- `joomla_delete_article` (trash)
+- `joomla_checkin_article`
+
+### Categories
+
 - `joomla_list_categories`
 - `joomla_get_category`
 - `joomla_create_category`
 - `joomla_update_category`
-- `joomla_delete_category`
+- `joomla_delete_category` (trash)
+- `joomla_checkin_category`
+
+### Modules
+
 - `joomla_list_modules`
 - `joomla_list_module_types`
 - `joomla_list_module_positions`
 - `joomla_inspect_module_type`
+- `joomla_get_module`
+- `joomla_create_module`
+- `joomla_update_module`
+- `joomla_delete_module` (trash)
+- `joomla_toggle_module` (publish/unpublish)
+- `joomla_checkin_module`
+
+### Gantry Particle Modules
+
 - `joomla_list_gantry_particle_types`
 - `joomla_inspect_gantry_particle`
 - `joomla_get_gantry_particle_module`
 - `joomla_create_gantry_particle_module`
 - `joomla_update_gantry_particle_module`
-- `joomla_get_module`
-- `joomla_create_module`
-- `joomla_update_module`
-- `joomla_delete_module`
-- `joomla_toggle_module`
+
+### Menus and Menu Items
+
 - `joomla_list_menus`
 - `joomla_create_menu`
 - `joomla_list_menu_items`
@@ -81,17 +117,65 @@ node C:\Users\Jqelp\OneDrive\Desktop\projects\joomla-mcp\dist\index.js
 - `joomla_get_menu_item`
 - `joomla_create_menu_item`
 - `joomla_update_menu_item`
-- `joomla_delete_menu_item`
-- `joomla_toggle_menu_item`
+- `joomla_delete_menu_item` (trash)
+- `joomla_toggle_menu_item` (publish/unpublish)
 - `joomla_checkin_menu_item`
+
+### Gantry 5 Layout and Outline Operations
+
+- `joomla_gantry5_list_outlines`
+- `joomla_gantry5_get_layout`
+- `joomla_gantry5_get_page_settings`
+- `joomla_gantry5_get_particle_defaults`
+- `joomla_gantry5_inspect_particle_type`
+- `joomla_gantry5_update_particle_instance`
+- `joomla_gantry5_update_node_attributes`
+- `joomla_gantry5_save_layout_raw`
+- `joomla_gantry5_diff_layout`
+- `joomla_gantry5_move_node`
+- `joomla_gantry5_add_particle_instance`
+- `joomla_gantry5_delete_node`
+
+### Admin Introspection and Generic Form Automation
+
+- `joomla_backend_inventory`
+- `joomla_inspect_admin_form`
+- `joomla_inspect_admin_list`
+- `joomla_submit_admin_form`
 - `joomla_page_content`
+
+### Snapshot and Restore
+
+- `joomla_snapshot_target`
+- `joomla_restore_snapshot`
+
+### Site Build Planning and Validation
+
+- `joomla_plan_site_build`
+- `joomla_apply_site_build`
+- `joomla_validate_site_build`
+- `joomla_launch_checklist`
+
+### Component and Extension Coverage (Current)
+
+- `joomla_component_inspect`
+- `joomla_media_list`
+- `joomla_media_create_folder`
+- `joomla_sponsors_list`
+- `joomla_sponsor_inspect`
+- `joomla_docman_list_documents`
+- `joomla_fileman_list_files`
+- `joomla_redirects_list`
+- `joomla_site_config_inspect`
+- `joomla_subsites_list`
+
+## Operational Notes
+
+- Many destructive operations are implemented as trash-first actions.
+- Gantry live-save workflows are guarded with snapshot/dry-run expectations in key flows.
+- Recent write/check-in operations are returning standardized operation payload fields like:
+  - `id`, `title`, `state`, `editUrl`, `viewUrl`, `warnings`, `verification`
 
 ## Roadmap
 
-See [`docs/JOOMLA_MCP_ROADMAP.md`](docs/JOOMLA_MCP_ROADMAP.md) for the deeper site capability inventory and phased MCP tool roadmap.
-
-## Notes
-
-The server talks to Joomla through the administrator HTML forms. It logs in with cookies, extracts the CSRF token, preserves existing form fields, and submits Joomla 3 field names such as `jform[title]`.
-
-Gantry 5 Particle support includes guided payload builders for commonly used particles: Joomla Articles, Block Content, Logo/Image, Social, Timeline, Menu, and Custom HTML. The guided tools build the hidden `jform[params][particle]` JSON value and still allow nested option overrides for theme-specific fields.
+For phased capability expansion and priorities, see [docs/JOOMLA_MCP_ROADMAP.md](docs/JOOMLA_MCP_ROADMAP.md).

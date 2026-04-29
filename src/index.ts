@@ -223,6 +223,20 @@ const tools = [
     },
   },
   {
+    name: "joomla_checkin_article",
+    description: "Check in a Joomla article by ID if it is checked out in the administrator backend.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: {
+          type: "string",
+          description: "The article ID number",
+        },
+      },
+      required: ["id"],
+    },
+  },
+  {
     name: "joomla_list_categories",
     description:
       "List all content categories. Returns array with id, title, state for each category. Optional extension parameter defaults to com_content.",
@@ -325,6 +339,20 @@ const tools = [
   {
     name: "joomla_delete_category",
     description: "Delete a category by ID. WARNING: Cannot delete categories that contain articles.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: {
+          type: "string",
+          description: "The category ID number",
+        },
+      },
+      required: ["id"],
+    },
+  },
+  {
+    name: "joomla_checkin_category",
+    description: "Check in a Joomla category by ID if it is checked out in the administrator backend.",
     inputSchema: {
       type: "object",
       properties: {
@@ -619,6 +647,20 @@ const tools = [
   {
     name: "joomla_delete_module",
     description: "Delete a module by ID.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: {
+          type: "string",
+          description: "The module ID number",
+        },
+      },
+      required: ["id"],
+    },
+  },
+  {
+    name: "joomla_checkin_module",
+    description: "Check in a Joomla module by ID if it is checked out in the administrator backend.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1395,6 +1437,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request: { params: { name
         };
       }
 
+      case "joomla_checkin_article": {
+        const login = await ensureLoggedIn();
+        if (!login.success) return { content: [{ type: "text", text: formatResult(login) }], isError: true };
+
+        const id = args?.id as string;
+        if (!id) return { content: [{ type: "text", text: "Error: id is required" }], isError: true };
+
+        const result = await joomla.checkInArticle(id);
+        return {
+          content: [{ type: "text", text: formatResult(result) }],
+          isError: !result.success,
+        };
+      }
+
       case "joomla_list_categories": {
         const login = await ensureLoggedIn();
         if (!login.success) return { content: [{ type: "text", text: formatResult(login) }], isError: true };
@@ -1469,6 +1525,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request: { params: { name
         if (!id) return { content: [{ type: "text", text: "Error: id is required" }], isError: true };
 
         const result = await joomla.deleteCategory(id);
+        return {
+          content: [{ type: "text", text: formatResult(result) }],
+          isError: !result.success,
+        };
+      }
+
+      case "joomla_checkin_category": {
+        const login = await ensureLoggedIn();
+        if (!login.success) return { content: [{ type: "text", text: formatResult(login) }], isError: true };
+
+        const id = args?.id as string;
+        if (!id) return { content: [{ type: "text", text: "Error: id is required" }], isError: true };
+
+        const result = await joomla.checkInCategory(id);
         return {
           content: [{ type: "text", text: formatResult(result) }],
           isError: !result.success,
@@ -1710,6 +1780,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request: { params: { name
         if (!id) return { content: [{ type: "text", text: "Error: id is required" }], isError: true };
 
         const result = await joomla.deleteModule(id);
+        return {
+          content: [{ type: "text", text: formatResult(result) }],
+          isError: !result.success,
+        };
+      }
+
+      case "joomla_checkin_module": {
+        const login = await ensureLoggedIn();
+        if (!login.success) return { content: [{ type: "text", text: formatResult(login) }], isError: true };
+
+        const id = args?.id as string;
+        if (!id) return { content: [{ type: "text", text: "Error: id is required" }], isError: true };
+
+        const result = await joomla.checkInModule(id);
         return {
           content: [{ type: "text", text: formatResult(result) }],
           isError: !result.success,

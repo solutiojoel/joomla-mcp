@@ -20,6 +20,8 @@ export declare class JoomlaClient {
     private getAdminUrl;
     private getBaseUrl;
     private resolveUrl;
+    private buildEntityUrls;
+    private buildOperationData;
     private getCookieHeader;
     private parseSetCookie;
     private extractCsrfToken;
@@ -163,6 +165,7 @@ export declare class JoomlaClient {
         access?: string;
     }): Promise<JoomlaResponse>;
     deleteArticle(id: string): Promise<JoomlaResponse>;
+    checkInArticle(id: string): Promise<JoomlaResponse>;
     listCategories(extension?: string): Promise<JoomlaResponse>;
     private parseCategoryList;
     getCategory(id: string): Promise<JoomlaResponse>;
@@ -183,6 +186,7 @@ export declare class JoomlaClient {
     }): Promise<JoomlaResponse>;
     private parseCategoryForm;
     deleteCategory(id: string): Promise<JoomlaResponse>;
+    checkInCategory(id: string): Promise<JoomlaResponse>;
     listModules(clientId?: string): Promise<JoomlaResponse>;
     private parseModuleList;
     private parseModuleTypes;
@@ -229,6 +233,7 @@ export declare class JoomlaClient {
         fieldOverrides?: Record<string, string>;
     }): Promise<JoomlaResponse>;
     deleteModule(id: string): Promise<JoomlaResponse>;
+    checkInModule(id: string): Promise<JoomlaResponse>;
     private normalizeGantryParticleType;
     private findGantryParticleGuide;
     private deepMergeGantryOptions;

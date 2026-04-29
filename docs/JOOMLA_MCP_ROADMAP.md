@@ -1,6 +1,6 @@
 # Joomla MCP Roadmap
 
-Last updated: 2026-04-28
+Last updated: 2026-04-29
 
 This roadmap maps the Joomla site capabilities visible in the administrator backend to possible MCP tool coverage. It is intended to guide the tool from "content/menu helper" into a fuller site operations assistant.
 
@@ -9,10 +9,10 @@ This roadmap maps the Joomla site capabilities visible in the administrator back
 The MCP server already supports a useful first layer of Joomla management:
 
 - Authentication/session handling with CSRF token and cookies.
-- Articles: list, get, create, update, trash, raw HTML body submission.
-- Categories: list, get, create, update, trash.
+- Articles: list, get, create, update, trash, check-in, raw HTML body submission.
+- Categories: list, get, create, update, trash, check-in.
 - Menus: list menus, create menus, list items, inspect item types, get/create/update/trash items, publish/unpublish, check-in.
-- Modules: list, inspect module types, list positions, get/create/update/trash/toggle modules.
+- Modules: list, inspect module types, list positions, get/create/update/trash/toggle/check-in modules.
 - Gantry 5 particle modules: guided particle module payloads for common particle module types.
 - Gantry 5 Themes > Studius: list outlines, inspect Layout/Page Settings/Particle Defaults, inspect particle instances, dry-run/save layout node and particle attribute updates.
 - Admin page exploration through raw page content.
@@ -74,6 +74,14 @@ Goal: make current tools safer, easier to trust, and easier to debug.
 - Add restore tools for snapshots.
 - Add tool response conventions: `id`, `title`, `state`, `editUrl`, `viewUrl`, `warnings`, `verification`.
 - Expand `mcp-all-tools-test.ts` to cover all read tools and safe dry-runs.
+
+Progress update (2026-04-29):
+
+- Implemented: check-in support for articles, categories, and modules.
+- Implemented (targeted): standardized response envelope and verification metadata for key write actions:
+  - menu item publish/unpublish + check-in
+  - module publish/unpublish + check-in
+  - article/category check-in
 
 ## Phase 2: Content Operations
 

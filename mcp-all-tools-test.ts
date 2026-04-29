@@ -11,11 +11,13 @@ const expectedTools = [
   "joomla_create_article",
   "joomla_update_article",
   "joomla_delete_article",
+  "joomla_checkin_article",
   "joomla_list_categories",
   "joomla_get_category",
   "joomla_create_category",
   "joomla_update_category",
   "joomla_delete_category",
+  "joomla_checkin_category",
   "joomla_list_modules",
   "joomla_list_module_types",
   "joomla_list_module_positions",
@@ -29,6 +31,7 @@ const expectedTools = [
   "joomla_create_module",
   "joomla_update_module",
   "joomla_delete_module",
+  "joomla_checkin_module",
   "joomla_toggle_module",
   "joomla_list_menus",
   "joomla_create_menu",
@@ -71,6 +74,15 @@ function parseToolJson(result: unknown): JsonObject {
 
 function dataArray(value: unknown): Array<Record<string, string>> {
   return Array.isArray(value) ? (value as Array<Record<string, string>>) : [];
+}
+
+function assertOperationEnvelope(tool: string, parsed: JsonObject): void {
+  const data = (parsed.data || {}) as Record<string, unknown>;
+  const requiredKeys = ["id", "title", "state", "editUrl", "viewUrl", "warnings", "verification"];
+  const missing = requiredKeys.filter((key) => !(key in data));
+  if (missing.length > 0) {
+    throw new Error(`${tool} missing response envelope keys: ${missing.join(", ")}`);
+  }
 }
 
 async function callTool(name: string, args: JsonObject = {}): Promise<JsonObject> {
@@ -128,6 +140,7 @@ async function main() {
       description: "<p>Updated by the MCP full-tool test.</p>",
       published: "1",
     });
+    await callTool("joomla_checkin_category", { id: createdCategory.id });
 
     const updatedCategories = await callTool("joomla_list_categories");
     const updatedCategory = findByTitle(dataArray(updatedCategories.data), updatedCategoryTitle);
@@ -158,6 +171,7 @@ async function main() {
       fulltext: "<p>Updated full text from the MCP full-tool test.</p>",
       state: "1",
     });
+    await callTool("joomla_checkin_article", { id: createdArticle.id });
 
     const articlesAfterUpdate = await callTool("joomla_list_articles");
     const updatedArticle = findByTitle(dataArray(articlesAfterUpdate.data), updatedArticleTitle);
@@ -216,8 +230,12 @@ async function main() {
       assignment: "0",
       params: { prepare_content: "1" },
     });
-    await callTool("joomla_toggle_module", { id: createdModule.id, state: "1" });
-    await callTool("joomla_toggle_module", { id: createdModule.id, state: "0" });
+    const moduleToggleOn = await callTool("joomla_toggle_module", { id: createdModule.id, state: "1" });
+    assertOperationEnvelope("joomla_toggle_module", moduleToggleOn);
+    const moduleCheckin = await callTool("joomla_checkin_module", { id: createdModule.id });
+    assertOperationEnvelope("joomla_checkin_module", moduleCheckin);
+    const moduleToggleOff = await callTool("joomla_toggle_module", { id: createdModule.id, state: "0" });
+    assertOperationEnvelope("joomla_toggle_module", moduleToggleOff);
     await callTool("joomla_delete_module", { id: createdModule.id });
 
     const gantryModuleTitle = `MCP Full Tool Test Gantry Particle ${startedAt}`;
@@ -298,6 +316,12 @@ async function main() {
       title: `${menuItemTitle} Updated`,
       note: "Updated by full MCP tool test",
     });
+    const menuToggleOn = await callTool("joomla_toggle_menu_item", { id: createdMenuItem.id, state: "1", menuType: firstMenuType });
+    assertOperationEnvelope("joomla_toggle_menu_item", menuToggleOn);
+    const menuCheckin = await callTool("joomla_checkin_menu_item", { id: createdMenuItem.id, menuType: firstMenuType });
+    assertOperationEnvelope("joomla_checkin_menu_item", menuCheckin);
+    const menuToggleOff = await callTool("joomla_toggle_menu_item", { id: createdMenuItem.id, state: "0", menuType: firstMenuType });
+    assertOperationEnvelope("joomla_toggle_menu_item", menuToggleOff);
     await callTool("joomla_delete_menu_item", { id: createdMenuItem.id });
     await callTool("joomla_page_content", { path: "index.php?option=com_content&view=articles" });
 
