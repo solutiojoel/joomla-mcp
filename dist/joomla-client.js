@@ -8,6 +8,7 @@ require("dotenv/config");
 const node_fs_1 = require("node:fs");
 const node_path_1 = __importDefault(require("node:path"));
 const node_crypto_1 = require("node:crypto");
+const js_yaml_1 = __importDefault(require("js-yaml"));
 const GANTRY_PARTICLE_GUIDES = [
     {
         type: "contentarray",
@@ -273,6 +274,13 @@ class JoomlaClient {
             verification: data.verification || { attempted: false },
             ...data,
         };
+    }
+    findLatestByTitle(items, title) {
+        for (let i = items.length - 1; i >= 0; i -= 1) {
+            if (items[i].title === title)
+                return items[i];
+        }
+        return null;
     }
     getCookieHeader() {
         if (this.cookies.size === 0)
@@ -627,6 +635,9 @@ class JoomlaClient {
     }
     getSnapshotDir() {
         return node_path_1.default.resolve(process.cwd(), "snapshots");
+    }
+    getBlueprintDir() {
+        return node_path_1.default.resolve(process.cwd(), "blueprints");
     }
     getSnapshotPath(snapshotId) {
         const safeId = snapshotId.replace(/[^a-zA-Z0-9_.-]/g, "");
@@ -1499,13 +1510,31 @@ class JoomlaClient {
             [token.name]: token.value,
         };
         const result = await this.postPage(newArticleUrl, formData);
-        // Check for success indicators
-        const newToken = this.extractCsrfToken(result.html);
         const successMsg = result.html.includes("Article saved") || result.html.includes("The article has been saved");
         const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
+        let createdId = "";
+        let actualState = data.state ?? "1";
+        let verifySuccess = false;
+        if (successMsg) {
+            const listed = await this.listArticles();
+            const found = this.findLatestByTitle((listed.data || []), data.title);
+            if (found?.id) {
+                createdId = found.id;
+                actualState = found.state || actualState;
+                verifySuccess = true;
+            }
+        }
         return {
-            success: successMsg,
+            success: successMsg && verifySuccess,
             message: successMsg ? "Article saved" : (errorMsg ? errorMsg[1].trim() : "Unknown result"),
+            data: this.buildOperationData("article", createdId || "", {
+                title: data.title,
+                state: actualState,
+                verification: {
+                    attempted: true,
+                    createListedByTitle: verifySuccess,
+                },
+            }),
             html: result.html,
         };
     }
@@ -1533,9 +1562,28 @@ class JoomlaClient {
         const result = await this.postPage(editUrl, formData);
         const successMsg = result.html.includes("Article saved") || result.html.includes("The article has been saved");
         const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
+        const verify = await this.getArticle(id);
+        const article = (verify.data || {});
+        const requestedTitle = data.title ?? existingArticle.title;
+        const requestedState = data.state ?? existingArticle.state;
+        const verified = verify.success
+            && article.title === requestedTitle
+            && article.state === requestedState;
         return {
-            success: successMsg,
+            success: successMsg && verified,
             message: successMsg ? "Article saved" : (errorMsg ? errorMsg[1].trim() : "Unknown result"),
+            data: this.buildOperationData("article", id, {
+                title: article.title || requestedTitle,
+                state: article.state || requestedState,
+                verification: {
+                    attempted: true,
+                    requestedTitle,
+                    actualTitle: article.title || "",
+                    requestedState,
+                    actualState: article.state || "",
+                    verified,
+                },
+            }),
             html: result.html,
         };
     }
@@ -1554,9 +1602,20 @@ class JoomlaClient {
         const result = await this.postPage(listUrl, formData);
         const successMsg = /article[s]?\s+(trashed|deleted)|has been (trashed|deleted)/i.test(result.html);
         const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
+        const verify = await this.getArticle(id);
+        const article = (verify.data || {});
         return {
             success: successMsg,
             message: successMsg ? "Article trashed" : (errorMsg ? errorMsg[1].trim() : "Unknown result"),
+            data: this.buildOperationData("article", id, {
+                title: article.title || "",
+                state: article.state || "",
+                verification: {
+                    attempted: true,
+                    actionAccepted: successMsg,
+                    stillLoadableByEdit: verify.success,
+                },
+            }),
             html: result.html,
         };
     }
@@ -1664,9 +1723,29 @@ class JoomlaClient {
         const result = await this.postPage(newCatUrl, formData);
         const successMsg = result.html.includes("Category saved") || result.html.includes("has been saved");
         const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
+        let createdId = "";
+        let actualState = data.published ?? "1";
+        let verifySuccess = false;
+        if (successMsg) {
+            const listed = await this.listCategories(ext);
+            const found = this.findLatestByTitle((listed.data || []), data.title);
+            if (found?.id) {
+                createdId = found.id;
+                actualState = found.state || actualState;
+                verifySuccess = true;
+            }
+        }
         return {
-            success: successMsg,
+            success: successMsg && verifySuccess,
             message: successMsg ? "Category saved" : (errorMsg ? errorMsg[1].trim() : "Unknown result"),
+            data: this.buildOperationData("category", createdId || "", {
+                title: data.title,
+                state: actualState,
+                verification: {
+                    attempted: true,
+                    createListedByTitle: verifySuccess,
+                },
+            }),
             html: result.html,
         };
     }
@@ -1692,9 +1771,28 @@ class JoomlaClient {
         const result = await this.postPage(editUrl, formData);
         const successMsg = result.html.includes("Category saved") || result.html.includes("has been saved");
         const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
+        const verify = await this.getCategory(id);
+        const category = (verify.data || {});
+        const requestedTitle = data.title ?? existingCategory.title;
+        const requestedState = data.published ?? existingCategory.published;
+        const verified = verify.success
+            && category.title === requestedTitle
+            && category.published === requestedState;
         return {
-            success: successMsg,
+            success: successMsg && verified,
             message: successMsg ? "Category saved" : (errorMsg ? errorMsg[1].trim() : "Unknown result"),
+            data: this.buildOperationData("category", id, {
+                title: category.title || requestedTitle,
+                state: category.published || requestedState,
+                verification: {
+                    attempted: true,
+                    requestedTitle,
+                    actualTitle: category.title || "",
+                    requestedState,
+                    actualState: category.published || "",
+                    verified,
+                },
+            }),
             html: result.html,
         };
     }
@@ -1724,9 +1822,20 @@ class JoomlaClient {
         const result = await this.postPage(listUrl, formData);
         const successMsg = /categor(y|ies)\s+(trashed|deleted)|has been (trashed|deleted)/i.test(result.html);
         const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
+        const verify = await this.getCategory(id);
+        const category = (verify.data || {});
         return {
             success: successMsg,
             message: successMsg ? "Category trashed" : (errorMsg ? errorMsg[1].trim() : "Unknown result"),
+            data: this.buildOperationData("category", id, {
+                title: category.title || "",
+                state: category.published || "",
+                verification: {
+                    attempted: true,
+                    actionAccepted: successMsg,
+                    stillLoadableByEdit: verify.success,
+                },
+            }),
             html: result.html,
         };
     }
@@ -2537,6 +2646,105 @@ class JoomlaClient {
                 tabs: this.parseGantryTabs(html),
                 ajax: this.parseGantryAjaxVars(html),
                 outlines,
+            },
+        };
+    }
+    async exportGantry5OutlineBlueprint(outline = "default", options = {}) {
+        const layout = await this.getGantry5Layout(outline, { theme: options.theme, includeRaw: true });
+        if (!layout.success)
+            return layout;
+        const data = (layout.data || {});
+        const root = (data.root || []);
+        const preset = data.preset;
+        const theme = this.getGantryThemeKey(options.theme);
+        const blueprint = {
+            kind: "gantry5-outline-blueprint",
+            version: 1,
+            exportedAt: new Date().toISOString(),
+            source: {
+                theme,
+                outline,
+            },
+            layout: {
+                preset,
+                root,
+            },
+            summary: this.summarizeGantryLayout(root),
+        };
+        const format = (options.format || "json").toLowerCase() === "yaml" ? "yaml" : "json";
+        const serialized = format === "yaml"
+            ? js_yaml_1.default.dump(blueprint, { noRefs: true, lineWidth: 120 })
+            : JSON.stringify(blueprint, null, 2);
+        let filePath = "";
+        if (options.saveToFile) {
+            (0, node_fs_1.mkdirSync)(this.getBlueprintDir(), { recursive: true });
+            const safeOutline = outline.replace(/[^a-zA-Z0-9_.-]/g, "_");
+            const ext = format === "yaml" ? "yaml" : "json";
+            const fileName = (options.fileName || `gantry-outline-${safeOutline}-${new Date().toISOString().replace(/[:.]/g, "-")}.${ext}`)
+                .replace(/[^a-zA-Z0-9_.-]/g, "_");
+            filePath = node_path_1.default.join(this.getBlueprintDir(), fileName);
+            (0, node_fs_1.writeFileSync)(filePath, serialized, "utf8");
+        }
+        return {
+            success: true,
+            message: "Gantry outline blueprint exported",
+            data: {
+                format,
+                theme,
+                outline,
+                filePath,
+                blueprint,
+                serialized,
+            },
+        };
+    }
+    async importGantry5OutlineBlueprint(data) {
+        let blueprint = data.blueprint;
+        if (!blueprint && data.filePath) {
+            const fileText = (0, node_fs_1.readFileSync)(node_path_1.default.resolve(process.cwd(), data.filePath), "utf8");
+            const fileFormat = (data.format || (data.filePath.toLowerCase().endsWith(".yaml") || data.filePath.toLowerCase().endsWith(".yml") ? "yaml" : "json")).toLowerCase();
+            blueprint = (fileFormat === "yaml" ? js_yaml_1.default.load(fileText) : JSON.parse(fileText));
+        }
+        if (!blueprint && data.blueprintText) {
+            const format = (data.format || "json").toLowerCase();
+            blueprint = (format === "yaml" ? js_yaml_1.default.load(data.blueprintText) : JSON.parse(data.blueprintText));
+        }
+        if (!blueprint || typeof blueprint !== "object") {
+            return { success: false, message: "blueprint, blueprintText, or filePath is required" };
+        }
+        const layout = (blueprint.layout || {});
+        const root = layout.root;
+        const preset = layout.preset;
+        if (!Array.isArray(root)) {
+            return { success: false, message: "Blueprint layout.root must be an array" };
+        }
+        const source = (blueprint.source || {});
+        const outline = data.outline || String(source.outline || "default");
+        const theme = data.theme || String(source.theme || "rt_studius");
+        if (data.dryRun || !data.confirm) {
+            return {
+                success: true,
+                message: data.dryRun ? "Dry run: Gantry outline blueprint parsed and ready" : "Blueprint parsed; set confirm=true to apply",
+                data: {
+                    outline,
+                    theme: this.getGantryThemeKey(theme),
+                    summary: this.summarizeGantryLayout(root),
+                    preset,
+                },
+            };
+        }
+        const save = await this.saveGantry5LayoutRaw(outline, {
+            root,
+            preset,
+            theme,
+        });
+        return {
+            success: save.success,
+            message: save.success ? "Gantry outline blueprint applied" : save.message,
+            data: {
+                outline,
+                theme: this.getGantryThemeKey(theme),
+                save: save.data,
             },
         };
     }
