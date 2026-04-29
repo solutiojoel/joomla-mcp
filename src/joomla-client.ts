@@ -1,0 +1,3693 @@
+import "dotenv/config";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
+import { randomUUID } from "node:crypto";
+
+export interface JoomlaConfig {
+  baseUrl: string;
+  username: string;
+  password: string;
+}
+
+export interface JoomlaResponse {
+  success: boolean;
+  message: string;
+  data?: unknown;
+  html?: string;
+}
+
+interface MenuItemType {
+  group: string;
+  label: string;
+  description: string;
+  encoded: string;
+  title: string;
+  request: Record<string, string>;
+}
+
+interface ModuleType {
+  id: string;
+  title: string;
+  href: string;
+  module?: string;
+}
+
+type FormValue = string | string[];
+type FormDataMap = Record<string, FormValue>;
+type GantryOptions = Record<string, unknown>;
+
+interface GantryLayoutNode {
+  id?: string;
+  title?: string;
+  type?: string;
+  subtype?: string;
+  attributes?: Record<string, unknown>;
+  children?: GantryLayoutNode[];
+  layout?: boolean;
+}
+
+interface AdminFieldDetails {
+  name: string;
+  id: string;
+  kind: string;
+  inputType: string;
+  value: string;
+  checked?: boolean;
+  disabled?: boolean;
+  label?: string;
+  options?: Array<{ value: string; label: string; selected: boolean }>;
+}
+
+interface GantryParticleGuide {
+  type: string;
+  title: string;
+  aliases: string[];
+  description: string;
+  commonlyUsed: boolean;
+  optionGroups: string[];
+  defaults: GantryOptions;
+  guidedFields: Array<{
+    name: string;
+    type: string;
+    description: string;
+    examples?: string[];
+  }>;
+}
+
+const GANTRY_PARTICLE_GUIDES: GantryParticleGuide[] = [
+  {
+    type: "contentarray",
+    title: "Joomla Articles",
+    aliases: ["joomla articles", "joomla article", "articles", "content array", "contentarray"],
+    description: "Displays Joomla articles by category, explicit article IDs, featured state, sort order, image/text/title/read-more settings, and column/limit controls.",
+    commonlyUsed: true,
+    optionGroups: ["filter", "limit", "display", "sort", "css", "extra"],
+    defaults: {
+      enabled: "1",
+      title: "",
+      article: {
+        filter: { categories: "", articles: "", featured: "include" },
+        limit: { total: "10", columns: "1", start: "0" },
+        display: {
+          pagination_buttons: "",
+          image: { enabled: "intro" },
+          text: { type: "intro", limit: "200", formatting: "text", prepare: "1" },
+          edit: "0",
+          title: { enabled: "show", limit: "" },
+          date: { enabled: "", format: "l, F d, Y" },
+          read_more: { enabled: "show", label: "", css: "" },
+          author: { enabled: "" },
+          category: { enabled: "" },
+          hits: { enabled: "" },
+        },
+        sort: { orderby: "ordering", ordering: "ASC" },
+      },
+      css: { class: "" },
+      extra: [],
+    },
+    guidedFields: [
+      { name: "article.filter.categories", type: "string", description: "Joomla category ID or comma-separated category IDs.", examples: ["8", "8,12"] },
+      { name: "article.filter.articles", type: "string", description: "Optional explicit article IDs. Leave blank to use categories.", examples: ["42,43"] },
+      { name: "article.filter.featured", type: "string", description: "Featured article handling.", examples: ["include", "only", "exclude"] },
+      { name: "article.limit.total", type: "string", description: "Maximum articles to show.", examples: ["3", "10"] },
+      { name: "article.limit.columns", type: "string", description: "Number of columns.", examples: ["1", "2", "3"] },
+      { name: "article.display.image.enabled", type: "string", description: "Image source display.", examples: ["intro", "full", ""] },
+      { name: "article.display.text.type", type: "string", description: "Article text source.", examples: ["intro", "full", ""] },
+      { name: "article.display.text.limit", type: "string", description: "Text character limit.", examples: ["150", "200", ""] },
+      { name: "article.display.title.enabled", type: "string", description: "Show or hide article titles.", examples: ["show", ""] },
+      { name: "article.sort.orderby", type: "string", description: "Sort field.", examples: ["ordering", "publish_up", "created", "title"] },
+      { name: "article.sort.ordering", type: "string", description: "Sort direction.", examples: ["ASC", "DESC"] },
+    ],
+  },
+  {
+    type: "blockcontent",
+    title: "Block Content",
+    aliases: ["blockcontent", "block content", "quicklinks", "quick links"],
+    description: "Builds manual blocks/quicklinks or article-driven blocks with icon, image, headline, description, links, subcontents, and Joomla article source settings.",
+    commonlyUsed: true,
+    optionGroups: ["source", "top content", "subcontents", "article", "link"],
+    defaults: {
+      enabled: "1",
+      source: "particle",
+      class: "",
+      title: "",
+      icon: "",
+      image: "",
+      headline: "",
+      description: "",
+      linktext: "",
+      link: "",
+      linkclass: "",
+      linktarget: "_self",
+      subcontents: [],
+      article: {
+        filter: { categories: "", articles: "", featured: "include" },
+        limit: { total: "5", start: "0" },
+        sort: { orderby: "publish_up", ordering: "ASC" },
+        display: {
+          image: { enabled: "intro" },
+          title: { enabled: "show", limit: "" },
+          text: { type: "intro", limit: "", formatting: "text" },
+          link: { enabled: "show", label: "", target: "_self" },
+        },
+      },
+    },
+    guidedFields: [
+      { name: "source", type: "string", description: "Use manual particle content or Joomla article content.", examples: ["particle", "joomla"] },
+      { name: "headline", type: "string", description: "Optional top headline." },
+      { name: "description", type: "string", description: "Optional top description." },
+      { name: "subcontents", type: "array", description: "Manual blocks with name, icon/img, subtitle/description, button/buttonlink, target, and classes." },
+      { name: "article.filter.categories", type: "string", description: "Joomla category ID(s) when source is joomla.", examples: ["35"] },
+      { name: "article.limit.total", type: "string", description: "Maximum article blocks.", examples: ["5", "30"] },
+      { name: "article.display.image.enabled", type: "string", description: "Article image display.", examples: ["intro", "full", ""] },
+    ],
+  },
+  {
+    type: "logo",
+    title: "Logo / Image",
+    aliases: ["logo", "image", "logo image", "image logo", "logo/image", "image/logo"],
+    description: "Places a linked logo or image with optional SVG/text/read-more settings.",
+    commonlyUsed: true,
+    optionGroups: ["image", "link", "text", "classes"],
+    defaults: {
+      enabled: "1",
+      url: "",
+      target: "_self",
+      image: "",
+      link: "0",
+      svg: "",
+      text: "",
+      title: "",
+      class: "g-logo",
+      readmore_label: "",
+      readmore_link: "",
+      readmore_class: "",
+    },
+    guidedFields: [
+      { name: "image", type: "string", description: "Image path, often gantry-media://template/file.svg or images/path/file.png." },
+      { name: "url", type: "string", description: "Link URL used when link is enabled." },
+      { name: "link", type: "string", description: "Whether the image links.", examples: ["0", "1"] },
+      { name: "target", type: "string", description: "Link target.", examples: ["_self", "_blank"] },
+      { name: "class", type: "string", description: "CSS class for the logo wrapper.", examples: ["g-logo"] },
+    ],
+  },
+  {
+    type: "social",
+    title: "Social",
+    aliases: ["social", "social links", "social icons"],
+    description: "Displays social links/icons. Theme variants may add extra fields, but the common setup is target/display plus an items array.",
+    commonlyUsed: true,
+    optionGroups: ["items", "display", "target", "css"],
+    defaults: {
+      enabled: "1",
+      title: "",
+      css: { class: "" },
+      target: "_blank",
+      display: "icons_only",
+      items: [],
+    },
+    guidedFields: [
+      { name: "items", type: "array", description: "Social items with icon, text, link, and name.", examples: ["[{\"icon\":\"fab fa-facebook-f\",\"text\":\"Facebook\",\"link\":\"https://facebook.com\",\"name\":\"Facebook\"}]"] },
+      { name: "target", type: "string", description: "Link target.", examples: ["_blank", "_self"] },
+      { name: "display", type: "string", description: "Display style.", examples: ["icons_only", "text_only", "both"] },
+      { name: "css.class", type: "string", description: "Optional CSS class." },
+    ],
+  },
+  {
+    type: "timeline",
+    title: "Timeline",
+    aliases: ["timeline", "history", "events timeline"],
+    description: "Displays dated or ordered timeline items. Theme variants differ, so the guide keeps common fields and allows raw option overrides.",
+    commonlyUsed: true,
+    optionGroups: ["items", "title", "classes"],
+    defaults: {
+      enabled: "1",
+      title: "",
+      class: "",
+      items: [],
+    },
+    guidedFields: [
+      { name: "items", type: "array", description: "Timeline items. Common keys are title, date, subtitle, description, image, icon, link, and name." },
+      { name: "title", type: "string", description: "Optional particle heading." },
+      { name: "class", type: "string", description: "Optional CSS class." },
+    ],
+  },
+  {
+    type: "menu",
+    title: "Menu",
+    aliases: ["menu", "navigation", "gantry menu"],
+    description: "Displays a Gantry menu/navigation particle. Theme variants differ, so menu source and render settings can be overridden.",
+    commonlyUsed: false,
+    optionGroups: ["menu", "levels", "rendering", "css"],
+    defaults: {
+      enabled: "1",
+      menu: "",
+      base: "",
+      startLevel: "1",
+      maxLevels: "0",
+      renderTitles: "1",
+      mobileTarget: "0",
+      class: "",
+    },
+    guidedFields: [
+      { name: "menu", type: "string", description: "Menu identifier/name when required by the theme." },
+      { name: "startLevel", type: "string", description: "Starting menu level.", examples: ["1", "2"] },
+      { name: "maxLevels", type: "string", description: "Maximum levels, often 0 means unlimited.", examples: ["0", "2"] },
+      { name: "class", type: "string", description: "Optional CSS class." },
+    ],
+  },
+  {
+    type: "custom",
+    title: "Custom HTML",
+    aliases: ["custom", "custom html", "html"],
+    description: "Stores custom HTML in a Gantry particle. Some themes name this particle custom, customhtml, or content; raw particle type override is supported.",
+    commonlyUsed: false,
+    optionGroups: ["html", "filter", "css"],
+    defaults: {
+      enabled: "1",
+      html: "",
+      filter: "0",
+      class: "",
+    },
+    guidedFields: [
+      { name: "html", type: "string", description: "HTML markup to render." },
+      { name: "filter", type: "string", description: "Filtering/preparation mode if supported by the theme.", examples: ["0", "1"] },
+      { name: "class", type: "string", description: "Optional CSS class." },
+    ],
+  },
+];
+
+export class JoomlaClient {
+  private config: JoomlaConfig;
+  private cookies: Map<string, string> = new Map();
+  private tokenName: string | null = null;
+
+  constructor(config: JoomlaConfig) {
+    this.config = config;
+  }
+
+  getConfig(): JoomlaConfig {
+    return { ...this.config };
+  }
+
+  private getAdminUrl(path = ""): string {
+    const siteBase = this.config.baseUrl.replace(/\/+$/, "");
+    const base = /\/administrator$/i.test(siteBase) ? siteBase : `${siteBase}/administrator`;
+    return `${base}/${path.replace(/^\/+/, "")}`;
+  }
+
+  private getBaseUrl(): string {
+    return this.config.baseUrl.replace(/\/administrator\/?$/i, "").replace(/\/+$/, "");
+  }
+
+  private resolveUrl(path: string): string {
+    if (path.startsWith("http")) return path;
+    if (path.startsWith("/")) return this.getBaseUrl() + path;
+    return this.getAdminUrl(path);
+  }
+
+  private getCookieHeader(): string | null {
+    if (this.cookies.size === 0) return null;
+    return Array.from(this.cookies.entries())
+      .map(([k, v]) => `${k}=${v}`)
+      .join("; ");
+  }
+
+  private parseSetCookie(header: string): void {
+    if (!header) return;
+    // Handle multiple set-cookie headers (semicolon-separated in some cases)
+    const cookies = header.split(", ").length > 1 ? header.split(", ") : [header];
+    for (const cookie of cookies) {
+      const parts = cookie.split(";")[0];
+      const eqIdx = parts.indexOf("=");
+      if (eqIdx > 0) {
+        const name = parts.substring(0, eqIdx).trim();
+        const value = parts.substring(eqIdx + 1).trim();
+        this.cookies.set(name, value);
+      }
+    }
+  }
+
+  private extractCsrfToken(html: string): { name: string; value: string } | null {
+    // Method 1: Extract from JS options JSON
+    const jsMatch = html.match(/"csrf\.token"\s*:\s*"([a-f0-9]+)"/);
+    if (jsMatch) {
+      return { name: jsMatch[1], value: "1" };
+    }
+
+    // Method 2: Extract from hidden input with CSRF_TOKEN markers
+    const markerMatch = html.match(/CSRF_TOKEN_START[^>]*<input[^>]*name="([a-f0-9]+)"[^>]*value="([^"]*)"/);
+    if (markerMatch) {
+      return { name: markerMatch[1], value: markerMatch[2] };
+    }
+
+    // Method 3: Extract from any hidden input with hex name
+    const hiddenMatch = html.match(/<input[^>]*type="hidden"[^>]*name="([a-f0-9]{32})"[^>]*value="([^"]*)"/);
+    if (hiddenMatch) {
+      return { name: hiddenMatch[1], value: hiddenMatch[2] };
+    }
+
+    return null;
+  }
+
+  private getFormUrlEncoded(data: FormDataMap): string {
+    return Object.entries(data)
+      .flatMap(([key, value]) => {
+        const values = Array.isArray(value) ? value : [value];
+        return values.map((item) => `${encodeURIComponent(key)}=${encodeURIComponent(item)}`);
+      })
+      .join("&");
+  }
+
+  private getAttr(tag: string, name: string): string | null {
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const match = tag.match(new RegExp(`\\s${escaped}\\s*=\\s*("([^"]*)"|'([^']*)'|([^\\s>]+))`, "i"));
+    return match ? this.decodeHtml(match[2] ?? match[3] ?? match[4] ?? "") : null;
+  }
+
+  private getRawAttr(tag: string, name: string): string | null {
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const match = tag.match(new RegExp(`\\s${escaped}\\s*=\\s*("([^"]*)"|'([^']*)'|([^\\s>]+))`, "i"));
+    return match ? match[2] ?? match[3] ?? match[4] ?? "" : null;
+  }
+
+  private getSelectedValue(selectHtml: string): string {
+    const selected = selectHtml.match(/<option\b[^>]*\bselected\b[^>]*>/i);
+    const first = selectHtml.match(/<option\b[^>]*>/i);
+    const option = selected?.[0] ?? first?.[0];
+    return option ? this.getAttr(option, "value") ?? "" : "";
+  }
+
+  private extractFormFields(html: string, formId = "adminForm"): Record<string, string> {
+    const formMatch = html.match(new RegExp(`<form\\b[^>]*id=["']${formId}["'][^>]*>([\\s\\S]*?)<\\/form>`, "i"));
+    const formHtml = formMatch ? formMatch[1] : html;
+    const fields: Record<string, string> = {};
+
+    for (const match of formHtml.matchAll(/<input\b[^>]*>/gi)) {
+      const tag = match[0];
+      const name = this.getAttr(tag, "name");
+      if (!name) continue;
+
+      const type = (this.getAttr(tag, "type") || "text").toLowerCase();
+      if ((type === "checkbox" || type === "radio") && !/\bchecked\b/i.test(tag)) continue;
+      if (type === "button" || type === "submit" || type === "reset") continue;
+
+      fields[name] = this.getAttr(tag, "value") ?? "";
+    }
+
+    for (const match of formHtml.matchAll(/<textarea\b[^>]*>([\s\S]*?)<\/textarea>/gi)) {
+      const tag = match[0];
+      const name = this.getAttr(tag, "name");
+      if (!name) continue;
+      fields[name] = this.decodeHtml(match[1] ?? "");
+    }
+
+    for (const match of formHtml.matchAll(/<select\b[^>]*>([\s\S]*?)<\/select>/gi)) {
+      const tag = match[0];
+      const name = this.getAttr(tag, "name");
+      if (!name) continue;
+      fields[name] = this.getSelectedValue(tag);
+    }
+
+    return fields;
+  }
+
+  private getJFormField(fields: Record<string, string>, key: string, fallback = ""): string {
+    return fields[`jform[${key}]`] ?? fields[`jform_${key}`] ?? fallback;
+  }
+
+  private extractCheckedValues(html: string, name: string): string[] {
+    const values: string[] = [];
+    const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const inputPattern = new RegExp(`<input\\b[^>]*\\sname=["']${escapedName}["'][^>]*>`, "gi");
+    for (const match of html.matchAll(inputPattern)) {
+      const tag = match[0];
+      if (/\bchecked\b/i.test(tag)) {
+        values.push(this.getAttr(tag, "value") ?? "");
+      }
+    }
+    return values;
+  }
+
+  private extractSelectOptions(html: string, selectId: string): Array<{ value: string; label: string; selected: boolean }> {
+    const match = html.match(new RegExp(`<select\\b[^>]*id=["']${selectId}["'][^>]*>([\\s\\S]*?)<\\/select>`, "i"));
+    if (!match) return [];
+
+    return Array.from(match[1].matchAll(/<option\b[^>]*>([\s\S]*?)<\/option>/gi)).map((optionMatch) => {
+      const tag = optionMatch[0];
+      return {
+        value: this.getAttr(tag, "value") ?? "",
+        label: this.stripHtml(optionMatch[1]),
+        selected: /\bselected\b/i.test(tag),
+      };
+    });
+  }
+
+  private stripHtml(value: string): string {
+    return this.decodeHtml(value.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim());
+  }
+
+  private extractEditLinkTitle(row: string, task: string): string {
+    const escapedTask = task.replace(".", "\\.");
+    const match = row.match(new RegExp(`<a\\b[^>]*href=["'][^"']*task=${escapedTask}[^"']*["'][^>]*>([\\s\\S]*?)<\\/a>`, "i"));
+    return match ? this.stripHtml(match[1]) : "";
+  }
+
+  private extractPublishedState(row: string): string {
+    if (/listItemTask\('[^']+','[^']+\.unpublish'\)/.test(row)) return "Published";
+    if (/listItemTask\('[^']+','[^']+\.publish'\)/.test(row)) return "Unpublished";
+    if (/icon-unpublish/.test(row)) return "Published";
+    if (/icon-publish/.test(row)) return "Unpublished";
+    if (/listItemTask\('[^']+','[^']+\.trash'\)/.test(row) || /icon-trash/.test(row)) return "Trashed";
+    return "Unknown";
+  }
+
+  private parseMenuItemTypePayload(encoded: string): { title: string; request: Record<string, string> } | null {
+    try {
+      const decoded = JSON.parse(Buffer.from(encoded, "base64").toString("utf8")) as {
+        title?: unknown;
+        request?: Record<string, unknown>;
+      };
+      const request: Record<string, string> = {};
+      for (const [key, value] of Object.entries(decoded.request || {})) {
+        request[key] = String(value);
+      }
+      return {
+        title: String(decoded.title || ""),
+        request,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private buildLinkFromRequest(request: Record<string, string>): string {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(request)) {
+      if (value !== "") params.set(key, value);
+    }
+    return `index.php?${params.toString()}`;
+  }
+
+  private buildArticleText(introtext = "", fulltext = ""): string {
+    if (!fulltext) return introtext;
+    return `${introtext}<hr id="system-readmore" />${fulltext}`;
+  }
+
+  private splitArticleText(articletext: string): { introtext: string; fulltext: string } {
+    const readmore = /<hr\b[^>]*\bid=["']system-readmore["'][^>]*>/i;
+    const parts = articletext.split(readmore);
+    return {
+      introtext: parts[0] || "",
+      fulltext: parts.slice(1).join("") || "",
+    };
+  }
+
+  private getMenuItemsListUrl(menuType?: string): string {
+    const params = new URLSearchParams({
+      option: "com_menus",
+      view: "items",
+      limit: "0",
+    });
+    if (menuType) params.set("menutype", menuType);
+    return this.getAdminUrl(`index.php?${params.toString()}`);
+  }
+
+  private parseMenuItemTypes(html: string): MenuItemType[] {
+    const types: MenuItemType[] = [];
+    const groups = html.matchAll(/<div class="accordion-heading">[\s\S]*?>([^<]+)<\/a>[\s\S]*?<ul class="nav nav-tabs nav-stacked">([\s\S]*?)<\/ul>/g);
+
+    for (const groupMatch of groups) {
+      const group = this.stripHtml(groupMatch[1]);
+      const body = groupMatch[2];
+      const links = body.matchAll(/<a\b[^>]*title="([^"]*)"[^>]*onclick="setmenutype\('([^']+)'\)"[^>]*>([\s\S]*?)<\/a>/g);
+
+      for (const linkMatch of links) {
+        const payload = this.parseMenuItemTypePayload(linkMatch[2]);
+        if (!payload) continue;
+        types.push({
+          group,
+          label: this.stripHtml(linkMatch[3]),
+          description: this.decodeHtml(linkMatch[1]),
+          encoded: linkMatch[2],
+          title: payload.title,
+          request: payload.request,
+        });
+      }
+    }
+
+    return types;
+  }
+
+  private findMenuItemType(types: MenuItemType[], itemType: string): MenuItemType | null {
+    const lowered = itemType.toLowerCase();
+    const decoded = this.parseMenuItemTypePayload(itemType);
+    if (decoded) {
+      return {
+        group: "",
+        label: decoded.title,
+        description: "",
+        encoded: itemType,
+        title: decoded.title,
+        request: decoded.request,
+      };
+    }
+
+    return types.find((type) => {
+      const requestKey = [type.request.option, type.request.view, type.request.layout].filter(Boolean).join(".");
+      return (
+        type.label.toLowerCase() === lowered ||
+        type.title.toLowerCase() === lowered ||
+        requestKey.toLowerCase() === lowered
+      );
+    }) || null;
+  }
+
+  private parseMenuItemForm(html: string): Record<string, string | Record<string, string>> {
+    const fields = this.extractFormFields(html);
+    const item: Record<string, string | Record<string, string>> = {};
+    const request: Record<string, string> = {};
+    const params: Record<string, string> = {};
+
+    for (const [key, value] of Object.entries(fields)) {
+      const requestMatch = key.match(/^jform\[request\]\[([^\]]+)\]$/);
+      const paramsMatch = key.match(/^jform\[params\]\[([^\]]+)\]$/);
+      if (requestMatch) request[requestMatch[1]] = value;
+      if (paramsMatch) params[paramsMatch[1]] = value;
+    }
+
+    item.id = this.getJFormField(fields, "id");
+    item.title = this.getJFormField(fields, "title");
+    item.alias = this.getJFormField(fields, "alias");
+    item.menuType = this.getJFormField(fields, "menutype");
+    item.type = this.getJFormField(fields, "type");
+    item.link = this.getJFormField(fields, "link");
+    item.parentId = this.getJFormField(fields, "parent_id", "1");
+    item.published = this.getJFormField(fields, "published", "1");
+    item.access = this.getJFormField(fields, "access", "1");
+    item.language = this.getJFormField(fields, "language", "*");
+    item.browserNav = this.getJFormField(fields, "browserNav", "0");
+    item.home = this.getJFormField(fields, "home", "0");
+    item.note = this.getJFormField(fields, "note");
+    item.request = request;
+    item.params = params;
+    return item;
+  }
+
+  private looksLoggedIn(html: string): boolean {
+    return !html.includes("mod-login-username") && (
+      html.includes("option=com_login&amp;task=logout") ||
+      html.includes("option=com_login&task=logout") ||
+      html.includes("task=logout") ||
+      html.includes("com_cpanel") ||
+      html.includes("com_dashboard") ||
+      html.includes("submenu") ||
+      html.includes("navbar")
+    );
+  }
+
+  private async request(
+    url: string,
+    options?: { method?: string; body?: string; contentType?: string }
+  ): Promise<{ status: number; headers: Map<string, string>; body: string }> {
+    const headers: Record<string, string> = {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    };
+
+    const cookieHeader = this.getCookieHeader();
+    if (cookieHeader) {
+      headers["Cookie"] = cookieHeader;
+    }
+
+    if (options?.contentType) {
+      headers["Content-Type"] = options.contentType;
+    }
+
+    const fetchOptions: RequestInit = {
+      method: options?.method || "GET",
+      headers,
+      body: options?.body,
+      redirect: "manual",
+    };
+
+    const response = await fetch(url, fetchOptions);
+
+    // Parse response headers
+    const responseHeaders = new Map<string, string>();
+    response.headers.forEach((value, key) => {
+      responseHeaders.set(key.toLowerCase(), value);
+    });
+
+    // Update cookies
+    const setCookie = responseHeaders.get("set-cookie");
+    if (setCookie) {
+      this.parseSetCookie(setCookie);
+    }
+
+    const body = await response.text();
+    return { status: response.status, headers: responseHeaders, body };
+  }
+
+  private async getPage(url: string): Promise<{ html: string; token: { name: string; value: string } | null }> {
+    const result = await this.request(url);
+
+    // Follow redirects
+    if ([301, 302, 303, 307, 308].includes(result.status)) {
+      const location = result.headers.get("location") || url;
+      const redirectUrl = this.resolveUrl(location);
+      return this.getPage(redirectUrl);
+    }
+
+    const token = this.extractCsrfToken(result.body);
+    if (token) {
+      this.tokenName = token.name;
+    }
+
+    return { html: result.body, token };
+  }
+
+  private async postPage(
+    url: string,
+    formData: FormDataMap
+  ): Promise<{ status: number; html: string; redirected: boolean }> {
+    // First, get the page to ensure we have a fresh token
+    const pageResult = await this.getPage(url);
+
+    // Inject/refresh token
+    const token = this.extractCsrfToken(pageResult.html);
+    if (token) {
+      formData[token.name] = token.value;
+      this.tokenName = token.name;
+    } else if (this.tokenName) {
+      formData[this.tokenName] = "1";
+    }
+
+    const formBody = this.getFormUrlEncoded(formData);
+    const result = await this.request(url, {
+      method: "POST",
+      body: formBody,
+      contentType: "application/x-www-form-urlencoded",
+    });
+
+    // Follow redirect
+    if (result.status === 302 || result.status === 303) {
+      const location = result.headers.get("location") || url;
+      const redirectUrl = this.resolveUrl(location);
+      const redirectResult = await this.request(redirectUrl);
+      return {
+        status: redirectResult.status,
+        html: redirectResult.body,
+        redirected: true,
+      };
+    }
+
+    return { status: result.status, html: result.body, redirected: false };
+  }
+
+  private getSnapshotDir(): string {
+    return path.resolve(process.cwd(), "snapshots");
+  }
+
+  private getSnapshotPath(snapshotId: string): string {
+    const safeId = snapshotId.replace(/[^a-zA-Z0-9_.-]/g, "");
+    return path.join(this.getSnapshotDir(), `${safeId}.json`);
+  }
+
+  private writeSnapshot(data: Record<string, unknown>): Record<string, unknown> {
+    mkdirSync(this.getSnapshotDir(), { recursive: true });
+    const id = `${new Date().toISOString().replace(/[:.]/g, "-")}-${String(data.kind || "snapshot")}-${randomUUID().slice(0, 8)}`;
+    const snapshot = {
+      id,
+      createdAt: new Date().toISOString(),
+      ...data,
+    };
+    const filePath = this.getSnapshotPath(id);
+    writeFileSync(filePath, JSON.stringify(snapshot, null, 2), "utf8");
+    return { ...snapshot, filePath };
+  }
+
+  private readSnapshot(snapshotId: string): Record<string, unknown> | null {
+    const filePath = this.getSnapshotPath(snapshotId);
+    if (!existsSync(filePath)) return null;
+    return JSON.parse(readFileSync(filePath, "utf8")) as Record<string, unknown>;
+  }
+
+  private normalizeAdminPath(pathOrUrl: string): string {
+    if (/^https?:\/\//i.test(pathOrUrl) || pathOrUrl.startsWith("/")) return pathOrUrl;
+    return pathOrUrl || "index.php";
+  }
+
+  private adminPathToUrl(pathOrUrl: string): string {
+    const normalized = this.normalizeAdminPath(pathOrUrl);
+    return this.resolveUrl(normalized);
+  }
+
+  private formActionToUrl(action: string, fallbackUrl: string): string {
+    if (!action) return fallbackUrl;
+    return this.resolveUrl(action);
+  }
+
+  private getLabelFor(html: string, id: string): string {
+    if (!id) return "";
+    const escaped = id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const match = html.match(new RegExp(`<label\\b[^>]*for=["']${escaped}["'][^>]*>([\\s\\S]*?)<\\/label>`, "i"));
+    return match ? this.stripHtml(match[1]) : "";
+  }
+
+  private parseAdminFields(formHtml: string): AdminFieldDetails[] {
+    const fields: AdminFieldDetails[] = [];
+
+    for (const match of formHtml.matchAll(/<input\b[^>]*>/gi)) {
+      const tag = match[0];
+      const name = this.getAttr(tag, "name");
+      if (!name) continue;
+      const inputType = (this.getAttr(tag, "type") || "text").toLowerCase();
+      if (["button", "submit", "reset"].includes(inputType)) continue;
+      const id = this.getAttr(tag, "id") || "";
+      fields.push({
+        name,
+        id,
+        kind: "input",
+        inputType,
+        value: this.getAttr(tag, "value") || "",
+        checked: /\bchecked\b/i.test(tag),
+        disabled: /\bdisabled\b/i.test(tag),
+        label: this.getLabelFor(formHtml, id),
+      });
+    }
+
+    for (const match of formHtml.matchAll(/<textarea\b[^>]*>([\s\S]*?)<\/textarea>/gi)) {
+      const tag = match[0];
+      const name = this.getAttr(tag, "name");
+      if (!name) continue;
+      const id = this.getAttr(tag, "id") || "";
+      fields.push({
+        name,
+        id,
+        kind: "textarea",
+        inputType: "textarea",
+        value: this.decodeHtml(match[1] || ""),
+        disabled: /\bdisabled\b/i.test(tag),
+        label: this.getLabelFor(formHtml, id),
+      });
+    }
+
+    for (const match of formHtml.matchAll(/<select\b[^>]*>([\s\S]*?)<\/select>/gi)) {
+      const tag = match[0];
+      const name = this.getAttr(tag, "name");
+      if (!name) continue;
+      const id = this.getAttr(tag, "id") || "";
+      const options = Array.from(tag.matchAll(/<option\b[^>]*>([\s\S]*?)<\/option>/gi)).map((optionMatch) => ({
+        value: this.getAttr(optionMatch[0], "value") || "",
+        label: this.stripHtml(optionMatch[1]),
+        selected: /\bselected\b/i.test(optionMatch[0]),
+      }));
+      fields.push({
+        name,
+        id,
+        kind: "select",
+        inputType: /\bmultiple\b/i.test(tag) ? "select-multiple" : "select",
+        value: this.getSelectedValue(tag),
+        disabled: /\bdisabled\b/i.test(tag),
+        label: this.getLabelFor(formHtml, id),
+        options,
+      });
+    }
+
+    return fields;
+  }
+
+  private formValuesFromDetails(fields: AdminFieldDetails[]): Record<string, string> {
+    const values: Record<string, string> = {};
+    for (const field of fields) {
+      if (field.disabled) continue;
+      if ((field.inputType === "checkbox" || field.inputType === "radio") && !field.checked) continue;
+      values[field.name] = field.value;
+    }
+    return values;
+  }
+
+  private parseAdminForms(html: string, preferredFormId?: string): Array<Record<string, unknown>> {
+    const forms: Array<Record<string, unknown>> = [];
+    for (const match of html.matchAll(/<form\b([^>]*)>([\s\S]*?)<\/form>/gi)) {
+      const tag = match[0];
+      const id = this.getAttr(tag, "id") || "";
+      if (preferredFormId && id !== preferredFormId) continue;
+      const fields = this.parseAdminFields(tag);
+      forms.push({
+        id,
+        name: this.getAttr(tag, "name") || "",
+        action: this.getAttr(tag, "action") || "",
+        method: (this.getAttr(tag, "method") || "get").toLowerCase(),
+        fieldCount: fields.length,
+        fields,
+        values: this.formValuesFromDetails(fields),
+      });
+    }
+    return forms;
+  }
+
+  private parseAdminLinks(html: string): Array<Record<string, string>> {
+    const links: Array<Record<string, string>> = [];
+    for (const match of html.matchAll(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi)) {
+      const href = this.decodeHtml(match[1]);
+      if (!href.includes("index.php")) continue;
+      const label = this.stripHtml(match[2]);
+      if (!label) continue;
+      links.push({ label, href });
+    }
+    return links;
+  }
+
+  private parseToolbarTasks(html: string): string[] {
+    const tasks = new Set<string>();
+    for (const match of html.matchAll(/Joomla\.submitbutton\(['"]([^'"]+)['"]\)/gi)) tasks.add(match[1]);
+    for (const match of html.matchAll(/submitbutton\(['"]([^'"]+)['"]\)/gi)) tasks.add(match[1]);
+    for (const match of html.matchAll(/task=([a-z0-9_.-]+)/gi)) tasks.add(this.decodeHtml(match[1]));
+    return Array.from(tasks).sort();
+  }
+
+  private parseAdminTableRows(html: string): Array<Record<string, unknown>> {
+    const rows: Array<Record<string, unknown>> = [];
+    for (const rowMatch of html.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)) {
+      const row = rowMatch[0];
+      const cid = row.match(/name=["']cid\[\]["'][^>]*value=["']([^"']+)["']/i)?.[1];
+      if (!cid) continue;
+      const titleMatch = row.match(/<a\b[^>]*href=["'][^"']*(?:task=[a-z0-9_.-]+\.edit|layout=edit|view=[^"']+)["'][^>]*>([\s\S]*?)<\/a>/i);
+      rows.push({
+        id: cid,
+        title: this.stripHtml(titleMatch?.[1] || row.match(/<a\b[^>]*>([\s\S]*?)<\/a>/i)?.[1] || ""),
+        state: this.extractPublishedState(row),
+        checkedOut: /checked[-_ ]?out|icon-lock|fa-lock/i.test(row),
+        rawText: this.stripHtml(row).slice(0, 500),
+      });
+    }
+    return rows;
+  }
+
+  private inferRestoreTask(kind: string, pathOrUrl?: string): string {
+    const path = pathOrUrl || "";
+    if (kind === "article" || /option=com_content/.test(path)) return "article.save";
+    if (kind === "category" || /option=com_categories/.test(path)) return "category.save";
+    if (kind === "menuItem" || /option=com_menus.*view=item|task=item/.test(path)) return "item.save";
+    if (kind === "module" || /option=com_modules/.test(path)) return "module.save";
+    if (kind === "menu" || /option=com_menus.*view=menu/.test(path)) return "menu.save";
+    return "";
+  }
+
+  // ==================== BACKEND DISCOVERY / SAFETY ====================
+
+  async backendInventory(): Promise<JoomlaResponse> {
+    const { html } = await this.getPage(this.getAdminUrl("index.php"));
+    const adminLinks = this.parseAdminLinks(html)
+      .filter((link) => !/logout|task=logout|https?:\/\//i.test(link.href))
+      .filter((link, index, links) => links.findIndex((item) => item.href === link.href) === index);
+
+    const components = Array.from(new Set(adminLinks.flatMap((link) =>
+      Array.from(link.href.matchAll(/option=(com_[a-z0-9_]+)/gi)).map((match) => match[1])
+    ))).sort();
+
+    const moduleTypes = await this.listModuleTypes("0");
+    const menuItemTypes = await this.listMenuItemTypes();
+    const gantryOutlines = await this.listGantry5Outlines();
+    const keyForms = [
+      ["Article Add", "index.php?option=com_content&task=article.add", "item-form"],
+      ["Category Add", "index.php?option=com_categories&task=category.add&extension=com_content", "item-form"],
+      ["Menu Item Add", "index.php?option=com_menus&view=item&layout=edit&menutype=mainmenu", "item-form"],
+      ["Module List", "index.php?option=com_modules&view=modules", "adminForm"],
+      ["Media", "index.php?option=com_media", ""],
+      ["Sponsors", "index.php?option=com_sponsors&view=sponsors", "adminForm"],
+      ["DOCman Documents", "index.php?option=com_docman", ""],
+      ["Redirects", "index.php?option=com_redir", "adminForm"],
+      ["Site Config", "index.php?option=com_siteconfig", "application-form"],
+    ].map(([label, path, formId]) => ({ label, path, formId }));
+
+    return {
+      success: true,
+      message: `Found ${components.length} components, ${adminLinks.length} admin links`,
+      data: {
+        components,
+        adminLinks,
+        moduleTypes: moduleTypes.data,
+        menuItemTypes: menuItemTypes.data,
+        gantryOutlines: (gantryOutlines.data as Record<string, unknown> | undefined)?.outlines || [],
+        keyForms,
+      },
+    };
+  }
+
+  async inspectAdminForm(pathOrUrl: string, formId?: string): Promise<JoomlaResponse> {
+    const url = this.adminPathToUrl(pathOrUrl);
+    const { html, token } = await this.getPage(url);
+    const forms = this.parseAdminForms(html, formId);
+    return {
+      success: forms.length > 0,
+      message: forms.length > 0 ? `Found ${forms.length} form(s)` : "No forms found",
+      data: {
+        path: pathOrUrl,
+        url,
+        csrfTokenName: token?.name || this.tokenName,
+        toolbarTasks: this.parseToolbarTasks(html),
+        forms,
+      },
+      html: html.substring(0, 50000),
+    };
+  }
+
+  async inspectAdminList(pathOrUrl: string, formId = "adminForm"): Promise<JoomlaResponse> {
+    const url = this.adminPathToUrl(pathOrUrl);
+    const { html, token } = await this.getPage(url);
+    const forms = this.parseAdminForms(html, formId);
+    const headers = Array.from(html.matchAll(/<th\b[^>]*>([\s\S]*?)<\/th>/gi))
+      .map((match) => this.stripHtml(match[1]))
+      .filter(Boolean);
+    const rows = this.parseAdminTableRows(html);
+    return {
+      success: true,
+      message: `Found ${rows.length} row(s)`,
+      data: {
+        path: pathOrUrl,
+        url,
+        csrfTokenName: token?.name || this.tokenName,
+        toolbarTasks: this.parseToolbarTasks(html),
+        headers: Array.from(new Set(headers)),
+        filters: forms[0] || null,
+        rows,
+      },
+    };
+  }
+
+  async submitAdminForm(pathOrUrl: string, data: {
+    formId?: string;
+    overrides?: Record<string, string>;
+    task?: string;
+    dryRun?: boolean;
+    confirm?: boolean;
+  }): Promise<JoomlaResponse> {
+    const url = this.adminPathToUrl(pathOrUrl);
+    const { html, token } = await this.getPage(url);
+    const forms = this.parseAdminForms(html, data.formId);
+    const form = forms[0] as Record<string, unknown> | undefined;
+    if (!form) return { success: false, message: "No matching form found" };
+
+    const fields = (form.values || {}) as Record<string, string>;
+    const payload: Record<string, string> = {
+      ...fields,
+      ...(data.overrides || {}),
+    };
+    if (data.task) payload.task = data.task;
+    if (token) payload[token.name] = token.value;
+    else if (this.tokenName) payload[this.tokenName] = "1";
+
+    const action = this.formActionToUrl(String(form.action || ""), url);
+    if (data.dryRun || !data.confirm) {
+      return {
+        success: true,
+        message: data.dryRun ? "Dry run: form payload prepared" : "Form payload prepared; set confirm=true to submit",
+        data: { path: pathOrUrl, action, method: form.method, payload },
+      };
+    }
+
+    const result = await this.request(action, {
+      method: "POST",
+      body: this.getFormUrlEncoded(payload),
+      contentType: "application/x-www-form-urlencoded",
+    });
+    const success = /saved|success|updated|created|published|unpublished/i.test(result.body) && !/alert-error|alert-danger/i.test(result.body);
+    return {
+      success,
+      message: success ? "Form submitted" : "Form submitted; verify result",
+      data: { status: result.status, action, task: payload.task || "" },
+      html: result.body.substring(0, 50000),
+    };
+  }
+
+  async snapshotTarget(data: {
+    kind: string;
+    id?: string;
+    path?: string;
+    formId?: string;
+    outline?: string;
+    theme?: string;
+  }): Promise<JoomlaResponse> {
+    const kind = data.kind;
+    let snapshotData: Record<string, unknown>;
+    if (kind === "gantryLayout") {
+      const layout = await this.getGantry5Layout(data.outline || "default", { theme: data.theme, includeRaw: true });
+      snapshotData = {
+        kind,
+        outline: data.outline || "default",
+        theme: this.getGantryThemeKey(data.theme),
+        payload: layout.data,
+      };
+    } else {
+      const targetPath = data.path || (
+        kind === "article" ? `index.php?option=com_content&task=article.edit&id=${data.id}` :
+        kind === "category" ? `index.php?option=com_categories&task=category.edit&id=${data.id}` :
+        kind === "menuItem" ? `index.php?option=com_menus&task=item.edit&id=${data.id}` :
+        kind === "module" ? `index.php?option=com_modules&task=module.edit&id=${data.id}` :
+        ""
+      );
+      if (!targetPath) return { success: false, message: "Snapshot requires path or supported kind/id" };
+      const inspected = await this.inspectAdminForm(targetPath, data.formId);
+      snapshotData = {
+        kind,
+        id: data.id || "",
+        path: targetPath,
+        formId: data.formId || "",
+        restoreTask: this.inferRestoreTask(kind, targetPath),
+        payload: inspected.data,
+      };
+    }
+
+    const snapshot = this.writeSnapshot(snapshotData);
+    return {
+      success: true,
+      message: "Snapshot saved",
+      data: snapshot,
+    };
+  }
+
+  async restoreSnapshot(snapshotId: string, options: { confirm?: boolean; task?: string } = {}): Promise<JoomlaResponse> {
+    const snapshot = this.readSnapshot(snapshotId);
+    if (!snapshot) return { success: false, message: `Snapshot not found: ${snapshotId}` };
+    if (!options.confirm) {
+      return {
+        success: true,
+        message: "Dry run: snapshot found; set confirm=true to restore",
+        data: snapshot,
+      };
+    }
+
+    if (snapshot.kind === "gantryLayout") {
+      const payload = snapshot.payload as Record<string, unknown>;
+      return this.saveGantry5LayoutRaw(String(snapshot.outline || "default"), {
+        root: payload.root || (payload.layout as Record<string, unknown> | undefined)?.root,
+        preset: payload.preset,
+        theme: String(snapshot.theme || "rt_studius"),
+      });
+    }
+
+    const payload = snapshot.payload as Record<string, unknown>;
+    const forms = ((payload as Record<string, unknown>).forms || []) as Array<Record<string, unknown>>;
+    const form = forms[0];
+    if (!form) return { success: false, message: "Snapshot does not contain a restorable form" };
+    return this.submitAdminForm(String(snapshot.path || ""), {
+      formId: String(snapshot.formId || form.id || ""),
+      overrides: form.values as Record<string, string>,
+      task: options.task || String(snapshot.restoreTask || ""),
+      confirm: true,
+    });
+  }
+
+  private slugify(value: string): string {
+    return value
+      .toLowerCase()
+      .replace(/&/g, "and")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+  }
+
+  private parseMenuTreeText(text: string): Array<Record<string, unknown>> {
+    const roots: Array<Record<string, unknown>> = [];
+    const stack: Array<{ indent: number; node: Record<string, unknown> }> = [];
+    for (const rawLine of text.split(/\r?\n/)) {
+      if (!rawLine.trim()) continue;
+      const indent = rawLine.match(/^\s*/)?.[0].replace(/\t/g, "    ").length || 0;
+      const clean = rawLine.trim().replace(/^[-*]\s+/, "");
+      const grid = /\[grid\]/i.test(clean);
+      const unpublished = /\b(unpublish|unpublished|coming soon)\b/i.test(clean);
+      const title = clean.replace(/\s*\[grid\]\s*/i, "").replace(/\s*\([^)]*\)\s*$/, "").trim();
+      const note = clean.match(/\(([^)]*)\)/)?.[1] || "";
+      const node: Record<string, unknown> = { title, note, grid, unpublished, children: [] };
+      while (stack.length && stack[stack.length - 1].indent >= indent) stack.pop();
+      if (stack.length) {
+        ((stack[stack.length - 1].node.children as Array<Record<string, unknown>>) || []).push(node);
+      } else {
+        roots.push(node);
+      }
+      stack.push({ indent, node });
+    }
+    return roots;
+  }
+
+  private normalizeMenuTree(menuTree: unknown): Array<Record<string, unknown>> {
+    if (typeof menuTree === "string") return this.parseMenuTreeText(menuTree);
+    if (Array.isArray(menuTree)) return menuTree as Array<Record<string, unknown>>;
+    return [];
+  }
+
+  private buildSiteBuildPlan(data: {
+    siteCode?: string;
+    suffix?: string;
+    menuTitle?: string;
+    menuType?: string;
+    menuTree: unknown;
+    pageContentCategory?: string;
+    homeCategory?: string;
+  }): Record<string, unknown> {
+    const suffix = this.slugify(data.suffix || data.siteCode || "site");
+    const menuTitle = data.menuTitle || `Main Menu ${suffix.toUpperCase()}`;
+    const menuType = data.menuType || `main-menu-${suffix}`.slice(0, 24);
+    const pageContentCategory = data.pageContentCategory || "Page Content (Menu Item Needed)";
+    const homeCategory = data.homeCategory || "__ Catholic";
+    const tree = this.normalizeMenuTree(data.menuTree);
+    const operations: Array<Record<string, unknown>> = [
+      { type: "ensureCategory", key: "pageContent", title: pageContentCategory, published: "1" },
+      { type: "ensureCategory", key: "homeCategory", title: homeCategory, published: "1" },
+      { type: "ensureMenu", title: menuTitle, menuType },
+    ];
+
+    const walk = (nodes: Array<Record<string, unknown>>, parentKey = "root", gridAncestorCategory = "", depth = 0) => {
+      for (const node of nodes) {
+        const title = String(node.title || "").trim();
+        if (!title) continue;
+        const alias = `${this.slugify(title)}-${suffix}`;
+        const key = `${parentKey}/${alias}`;
+        const isHome = depth === 0 && title.toLowerCase() === "home";
+        const gridCategory = node.grid ? `${title} Items` : gridAncestorCategory;
+        if (node.grid) operations.push({ type: "ensureCategory", key: `grid:${title}`, title: gridCategory, published: "1" });
+
+        if (isHome) {
+          operations.push({
+            type: "ensureMenuItem",
+            key,
+            title,
+            alias,
+            menuType,
+            parentKey,
+            itemType: "COM_CONTENT_CATEGORY_VIEW_BLOG_TITLE",
+            request: { id: "{homeCategoryId}" },
+            published: "1",
+            home: "1",
+          });
+        } else {
+          const articleCategory = gridAncestorCategory || pageContentCategory;
+          operations.push({
+            type: "ensureArticle",
+            key: `article:${key}`,
+            title,
+            alias,
+            categoryTitle: articleCategory,
+            state: node.unpublished ? "0" : "1",
+            introtext: `<h1>${title}</h1>`,
+          });
+          operations.push({
+            type: "ensureMenuItem",
+            key,
+            title,
+            alias,
+            menuType,
+            parentKey,
+            itemType: "COM_CONTENT_ARTICLE_VIEW_DEFAULT_TITLE",
+            request: { id: `{article:${key}}` },
+            published: node.unpublished ? "0" : "1",
+          });
+        }
+        walk((node.children || []) as Array<Record<string, unknown>>, key, gridCategory, depth + 1);
+      }
+    };
+    walk(tree);
+
+    return {
+      generatedAt: new Date().toISOString(),
+      suffix,
+      menuTitle,
+      menuType,
+      pageContentCategory,
+      homeCategory,
+      tree,
+      operations,
+    };
+  }
+
+  async planSiteBuild(data: {
+    siteCode?: string;
+    suffix?: string;
+    menuTitle?: string;
+    menuType?: string;
+    menuTree: unknown;
+    pageContentCategory?: string;
+    homeCategory?: string;
+  }): Promise<JoomlaResponse> {
+    const plan = this.buildSiteBuildPlan(data);
+    return {
+      success: true,
+      message: `Planned ${(plan.operations as unknown[]).length} site-build operation(s)`,
+      data: plan,
+    };
+  }
+
+  private async findCategoryByTitle(title: string): Promise<Record<string, string> | null> {
+    const categories = await this.listCategories("com_content");
+    return ((categories.data || []) as Array<Record<string, string>>).find((category) => category.title === title) || null;
+  }
+
+  async applySiteBuild(data: {
+    plan?: Record<string, unknown>;
+    siteCode?: string;
+    suffix?: string;
+    menuTitle?: string;
+    menuType?: string;
+    menuTree?: unknown;
+    pageContentCategory?: string;
+    homeCategory?: string;
+    confirm?: boolean;
+  }): Promise<JoomlaResponse> {
+    const plan = data.plan || this.buildSiteBuildPlan({
+      siteCode: data.siteCode,
+      suffix: data.suffix,
+      menuTitle: data.menuTitle,
+      menuType: data.menuType,
+      menuTree: data.menuTree || [],
+      pageContentCategory: data.pageContentCategory,
+      homeCategory: data.homeCategory,
+    });
+    if (!data.confirm) {
+      return { success: true, message: "Dry run: site build plan prepared; set confirm=true to apply", data: plan };
+    }
+
+    const results: Array<Record<string, unknown>> = [];
+    const categoryIds = new Map<string, string>();
+    const articleIds = new Map<string, string>();
+    const menuItemIds = new Map<string, string>([["root", "1"]]);
+    let menuType = String(plan.menuType || "");
+
+    for (const op of (plan.operations || []) as Array<Record<string, unknown>>) {
+      if (op.type === "ensureCategory") {
+        const existing = await this.findCategoryByTitle(String(op.title));
+        if (existing) {
+          categoryIds.set(String(op.key || op.title), existing.id);
+          results.push({ op, success: true, skipped: true, id: existing.id });
+        } else {
+          const created = await this.createCategory({ title: String(op.title), published: String(op.published || "1") });
+          const idMatch = String(created.html || "").match(/task=category\.edit&amp;id=(\d+)/);
+          const found = await this.findCategoryByTitle(String(op.title));
+          const id = found?.id || idMatch?.[1] || "";
+          categoryIds.set(String(op.key || op.title), id);
+          results.push({ op, success: created.success, id, message: created.message });
+        }
+      } else if (op.type === "ensureMenu") {
+        const menus = await this.listMenus();
+        const existing = ((menus.data || []) as Array<Record<string, string>>).find((menu) => menu.menuType === op.menuType || menu.title === op.title);
+        if (existing) {
+          menuType = existing.menuType || String(op.menuType);
+          results.push({ op, success: true, skipped: true, menuType });
+        } else {
+          const created = await this.createMenu({ title: String(op.title), menuType: String(op.menuType) });
+          menuType = String(op.menuType);
+          results.push({ op, success: created.success, menuType, message: created.message });
+        }
+      } else if (op.type === "ensureArticle") {
+        const category = await this.findCategoryByTitle(String(op.categoryTitle));
+        const categoryId = category?.id || categoryIds.get(String(op.categoryTitle)) || "";
+        if (!categoryId) {
+          results.push({ op, success: false, message: `Missing category: ${op.categoryTitle}` });
+          continue;
+        }
+        const created = await this.createArticle({
+          title: String(op.title),
+          alias: String(op.alias),
+          categoryId,
+          introtext: String(op.introtext || ""),
+          state: String(op.state || "1"),
+        });
+        const list = await this.listArticles(categoryId);
+        const article = ((list.data || []) as Array<Record<string, string>>).find((item) => item.title === op.title);
+        if (article?.id) articleIds.set(String(op.key), article.id);
+        results.push({ op, success: created.success, id: article?.id || "", message: created.message });
+      } else if (op.type === "ensureMenuItem") {
+        const parentId = menuItemIds.get(String(op.parentKey || "root")) || "1";
+        const request: Record<string, string> = {};
+        for (const [key, value] of Object.entries((op.request || {}) as Record<string, string>)) {
+          if (value === "{homeCategoryId}") request[key] = categoryIds.get("homeCategory") || "";
+          else if (/^\{article:/.test(value)) request[key] = articleIds.get(value.slice(1, -1)) || "";
+          else request[key] = value;
+        }
+        const created = await this.createMenuItem({
+          title: String(op.title),
+          menuType,
+          itemType: String(op.itemType),
+          alias: String(op.alias),
+          parentId,
+          published: String(op.published || "1"),
+          home: String(op.home || "0"),
+          request,
+        });
+        const id = String((created.data as Record<string, unknown> | undefined)?.id || "");
+        if (id) menuItemIds.set(String(op.key), id);
+        results.push({ op, success: created.success, id, message: created.message });
+      }
+    }
+
+    return {
+      success: results.every((result) => result.success),
+      message: `Applied ${results.length} site-build operation(s)`,
+      data: { plan, results },
+    };
+  }
+
+  async validateSiteBuild(data: { menuType?: string; plan?: Record<string, unknown> }): Promise<JoomlaResponse> {
+    const warnings: Array<Record<string, unknown>> = [];
+    const planOps = ((data.plan || {}).operations || []) as Array<Record<string, unknown>>;
+    const aliases = new Map<string, number>();
+    for (const op of planOps) {
+      const alias = String(op.alias || "");
+      if (!alias) continue;
+      aliases.set(alias, (aliases.get(alias) || 0) + 1);
+    }
+    for (const [alias, count] of aliases) {
+      if (count > 1) warnings.push({ type: "duplicatePlannedAlias", alias, count });
+    }
+
+    if (data.menuType) {
+      const items = await this.listMenuItems(data.menuType);
+      const seenTitles = new Map<string, number>();
+      for (const item of (items.data || []) as Array<Record<string, string>>) {
+        seenTitles.set(item.title, (seenTitles.get(item.title) || 0) + 1);
+        if (item.state === "Unpublished" && !/coming soon|safety committee/i.test(item.title)) {
+          warnings.push({ type: "unpublishedMenuItem", id: item.id, title: item.title });
+        }
+      }
+      for (const [title, count] of seenTitles) {
+        if (count > 1) warnings.push({ type: "duplicateMenuTitle", title, count });
+      }
+    }
+
+    return {
+      success: warnings.length === 0,
+      message: warnings.length ? `Found ${warnings.length} validation warning(s)` : "Validation passed",
+      data: { warnings },
+    };
+  }
+
+  async launchChecklist(data: { menuType?: string; gantryOutline?: string; theme?: string } = {}): Promise<JoomlaResponse> {
+    const checks: Array<Record<string, unknown>> = [];
+    const categories = await this.listCategories("com_content");
+    checks.push({ name: "contentCategories", success: categories.success, count: Array.isArray(categories.data) ? categories.data.length : 0 });
+    const menus = await this.listMenus();
+    checks.push({ name: "menus", success: menus.success, count: Array.isArray(menus.data) ? menus.data.length : 0 });
+    if (data.menuType) {
+      const items = await this.listMenuItems(data.menuType);
+      checks.push({ name: "menuItems", success: items.success, menuType: data.menuType, count: Array.isArray(items.data) ? items.data.length : 0 });
+    }
+    const siteConfig = await this.inspectAdminForm("index.php?option=com_siteconfig", "application-form");
+    checks.push({ name: "siteConfig", success: siteConfig.success });
+    const gantry = await this.getGantry5Layout(data.gantryOutline || "default", { theme: data.theme });
+    checks.push({ name: "gantryLayout", success: gantry.success, outline: data.gantryOutline || "default" });
+    const redirects = await this.inspectAdminList("index.php?option=com_redir");
+    checks.push({ name: "redirects", success: redirects.success, count: (((redirects.data as Record<string, unknown>).rows || []) as unknown[]).length });
+    return {
+      success: checks.every((check) => check.success),
+      message: checks.every((check) => check.success) ? "Launch checklist passed" : "Launch checklist has warnings",
+      data: { checks },
+    };
+  }
+
+  async componentInspect(data: { path: string; mode?: "form" | "list"; formId?: string }): Promise<JoomlaResponse> {
+    if (!data.path) return { success: false, message: "path is required" };
+    if (data.mode === "form") return this.inspectAdminForm(data.path, data.formId);
+    if (data.mode === "list") return this.inspectAdminList(data.path, data.formId || "adminForm");
+    const list = await this.inspectAdminList(data.path, data.formId || "adminForm");
+    if (list.success && (((list.data as Record<string, unknown>).rows || []) as unknown[]).length > 0) return list;
+    return this.inspectAdminForm(data.path, data.formId);
+  }
+
+  async mediaList(pathOrFolder = "index.php?option=com_media"): Promise<JoomlaResponse> {
+    const pathValue = pathOrFolder.includes("index.php")
+      ? pathOrFolder
+      : `index.php?option=com_media&folder=${encodeURIComponent(pathOrFolder)}`;
+    const { html } = await this.getPage(this.adminPathToUrl(pathValue));
+    const links = this.parseAdminLinks(html)
+      .filter((link) => /com_media|task=file|task=folder|download|images\//i.test(link.href + " " + link.text))
+      .slice(0, 200);
+    const images = Array.from(html.matchAll(/<img\b[^>]*src=["']([^"']+)["'][^>]*>/gi))
+      .map((match) => ({ src: this.decodeHtml(match[1]), alt: this.getAttr(match[0], "alt") || "" }))
+      .filter((image) => !/administrator\/templates|media\/system/i.test(image.src))
+      .slice(0, 200);
+    return {
+      success: true,
+      message: `Inspected media manager (${links.length} links, ${images.length} image references)`,
+      data: {
+        path: pathValue,
+        links,
+        images,
+        forms: this.parseAdminForms(html).map((form) => ({
+          id: form.id,
+          action: form.action,
+          method: form.method,
+          fieldCount: Array.isArray(form.fields) ? form.fields.length : 0,
+        })),
+        toolbarTasks: this.parseToolbarTasks(html),
+      },
+      html: html.substring(0, 50000),
+    };
+  }
+
+  async createMediaFolder(data: { folderName: string; folderBase?: string; path?: string; dryRun?: boolean; confirm?: boolean }): Promise<JoomlaResponse> {
+    if (!data.folderName) return { success: false, message: "folderName is required" };
+    return this.submitAdminForm(data.path || "index.php?option=com_media", {
+      overrides: {
+        foldername: data.folderName,
+        folderbase: data.folderBase || "",
+      },
+      task: "folder.create",
+      dryRun: data.dryRun ?? !data.confirm,
+      confirm: data.confirm,
+    });
+  }
+
+  async listSponsors(): Promise<JoomlaResponse> {
+    return this.inspectAdminList("index.php?option=com_sponsors&view=sponsors");
+  }
+
+  async inspectSponsor(pathOrUrl = "index.php?option=com_sponsors&view=sponsor&layout=edit"): Promise<JoomlaResponse> {
+    return this.inspectAdminForm(pathOrUrl);
+  }
+
+  async listDocmanDocuments(): Promise<JoomlaResponse> {
+    return this.inspectAdminList("index.php?option=com_docman&view=documents");
+  }
+
+  async listFilemanFiles(): Promise<JoomlaResponse> {
+    return this.inspectAdminList("index.php?option=com_fileman");
+  }
+
+  async listRedirects(): Promise<JoomlaResponse> {
+    return this.inspectAdminList("index.php?option=com_redir");
+  }
+
+  async inspectSiteConfig(): Promise<JoomlaResponse> {
+    return this.inspectAdminForm("index.php?option=com_siteconfig", "application-form");
+  }
+
+  async listSubsites(): Promise<JoomlaResponse> {
+    return this.inspectAdminList("index.php?option=com_subsites");
+  }
+
+  // ==================== AUTH ====================
+
+  async login(): Promise<JoomlaResponse> {
+    const loginUrl = this.getAdminUrl();
+    const result = await this.getPage(loginUrl);
+    const token = this.extractCsrfToken(result.html);
+
+    if (!token) {
+      if (this.looksLoggedIn(result.html)) {
+        return {
+          success: true,
+          message: "Already logged in",
+          html: result.html,
+        };
+      }
+
+      return {
+        success: false,
+        message: "Failed to extract CSRF token from login page",
+        html: result.html,
+      };
+    }
+
+    const formData: Record<string, string> = {
+      username: this.config.username,
+      passwd: this.config.password,
+      option: "com_login",
+      task: "login",
+      return: "aW5kZXgucGhw",
+      [token.name]: token.value,
+    };
+
+    const postResult = await this.postPage(loginUrl, formData);
+
+    // Check success
+    if (postResult.html.includes("mod-login-username") || postResult.html.includes("Empty password")) {
+      // Login failed - still on login page
+      const errorMatch = postResult.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
+      return {
+        success: false,
+        message: errorMatch ? errorMatch[1].trim() : "Login failed",
+        html: postResult.html,
+      };
+    }
+
+    // Login successful
+    this.tokenName = this.extractCsrfToken(postResult.html)?.name || this.tokenName;
+    return {
+      success: true,
+      message: "Login successful",
+      html: postResult.html,
+    };
+  }
+
+  async logout(): Promise<JoomlaResponse> {
+    return this.postPage(this.getAdminUrl(), {
+      option: "com_login",
+      task: "logout",
+      [this.tokenName || ""] : "1",
+    }).then((r) => ({
+      success: r.status === 200,
+      message: "Logged out",
+      html: r.html,
+    }));
+  }
+
+  async isLoggedIn(): Promise<boolean> {
+    const { html } = await this.getPage(this.getAdminUrl("index.php"));
+    return this.looksLoggedIn(html);
+  }
+
+  // ==================== ARTICLES ====================
+
+  async listArticles(categoryId?: string, state?: string): Promise<JoomlaResponse> {
+    const url = this.getAdminUrl("index.php?option=com_content&view=articles&limit=0");
+    const { html } = await this.getPage(url);
+    const articles = this.parseArticleList(html);
+    return {
+      success: true,
+      message: `Found ${articles.length} articles`,
+      data: articles,
+      html,
+    };
+  }
+
+  private parseArticleList(html: string): Array<Record<string, string>> {
+    const articles: Array<Record<string, string>> = [];
+    const allRows = html.match(/<tr[^>]*>([\s\S]*?)<\/tr>/g);
+    if (allRows) {
+      for (const row of allRows) {
+        const cbMatch = row.match(/name="cid\[\]"\s*value="(\d+)"/);
+        if (!cbMatch || row.includes("JSelect") || row.includes("JAll")) continue;
+
+        const title = this.extractEditLinkTitle(row, "article.edit");
+        if (!title) continue;
+
+        const catMatch = row.match(/Category:\s*<a\b[^>]*>([\s\S]*?)<\/a>/i);
+        articles.push({
+          id: cbMatch[1],
+          title,
+          state: this.extractPublishedState(row),
+          category: catMatch ? this.stripHtml(catMatch[1]) : "Unknown",
+        });
+      }
+    }
+
+    return articles;
+  }
+
+  async getArticle(id: string): Promise<JoomlaResponse> {
+    const url = this.getAdminUrl(`index.php?option=com_content&task=article.edit&id=${id}`);
+    const { html } = await this.getPage(url);
+    const article = this.parseArticleForm(html);
+    return {
+      success: !!article.title,
+      message: article.title ? "Article retrieved" : "Failed to parse article form",
+      data: article,
+      html,
+    };
+  }
+
+  private parseArticleForm(html: string): Record<string, string> {
+    const fields = this.extractFormFields(html);
+    const article: Record<string, string> = {};
+
+    article.title = this.getJFormField(fields, "title");
+    article.alias = this.getJFormField(fields, "alias");
+    article.categoryId = this.getJFormField(fields, "catid");
+
+    const catNameMatch = html.match(/id="jform_catid"[\s\S]*?<option[^>]*selected[^>]*value="[^"]*">([^<]*)/);
+    article.categoryName = catNameMatch ? catNameMatch[1] : "";
+
+    article.state = this.getJFormField(fields, "state");
+    article.articletext = this.getJFormField(fields, "articletext");
+    const splitText = this.splitArticleText(article.articletext);
+    article.introtext = this.getJFormField(fields, "introtext", splitText.introtext);
+    article.fulltext = this.getJFormField(fields, "fulltext", splitText.fulltext);
+    article.access = this.getJFormField(fields, "access", "1");
+    article.note = this.getJFormField(fields, "note");
+
+    return article;
+  }
+
+  async createArticle(data: {
+    title: string;
+    alias?: string;
+    categoryId: string;
+    introtext?: string;
+    fulltext?: string;
+    state?: string;
+    access?: string;
+  }): Promise<JoomlaResponse> {
+    const newArticleUrl = this.getAdminUrl("index.php?option=com_content&view=article&layout=edit");
+    const { html } = await this.getPage(newArticleUrl);
+    const token = this.extractCsrfToken(html);
+
+    if (!token) {
+      return { success: false, message: "Failed to extract CSRF token" };
+    }
+
+    const formData: Record<string, string> = {
+      ...this.extractFormFields(html),
+      task: "article.save",
+      "jform[title]": data.title,
+      "jform[alias]": data.alias || "",
+      "jform[catid]": data.categoryId,
+      "jform[articletext]": this.buildArticleText(data.introtext || "", data.fulltext || ""),
+      "jform[state]": data.state ?? "1",
+      "jform[access]": data.access ?? "1",
+      [token.name]: token.value,
+    };
+
+    const result = await this.postPage(newArticleUrl, formData);
+
+    // Check for success indicators
+    const newToken = this.extractCsrfToken(result.html);
+    const successMsg = result.html.includes("Article saved") || result.html.includes("The article has been saved");
+    const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
+
+    return {
+      success: successMsg,
+      message: successMsg ? "Article saved" : (errorMsg ? errorMsg[1].trim() : "Unknown result"),
+      html: result.html,
+    };
+  }
+
+  async updateArticle(
+    id: string,
+    data: {
+      title?: string;
+      alias?: string;
+      categoryId?: string;
+      introtext?: string;
+      fulltext?: string;
+      state?: string;
+      access?: string;
+    }
+  ): Promise<JoomlaResponse> {
+    const editUrl = this.getAdminUrl(`index.php?option=com_content&task=article.edit&id=${id}`);
+    const { html } = await this.getPage(editUrl);
+    const existingArticle = this.parseArticleForm(html);
+    const token = this.extractCsrfToken(html);
+
+    if (!token) {
+      return { success: false, message: "Failed to extract CSRF token" };
+    }
+
+    const introtext = data.introtext ?? existingArticle.introtext;
+    const fulltext = data.fulltext ?? existingArticle.fulltext;
+    const formData: Record<string, string> = {
+      ...this.extractFormFields(html),
+      task: "article.save",
+      "jform[title]": data.title ?? existingArticle.title,
+      "jform[alias]": data.alias ?? existingArticle.alias,
+      "jform[catid]": data.categoryId ?? existingArticle.categoryId,
+      "jform[articletext]": this.buildArticleText(introtext, fulltext),
+      "jform[state]": data.state ?? existingArticle.state,
+      "jform[access]": data.access ?? existingArticle.access,
+      [token.name]: token.value,
+    };
+
+    const result = await this.postPage(editUrl, formData);
+    const successMsg = result.html.includes("Article saved") || result.html.includes("The article has been saved");
+    const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
+
+    return {
+      success: successMsg,
+      message: successMsg ? "Article saved" : (errorMsg ? errorMsg[1].trim() : "Unknown result"),
+      html: result.html,
+    };
+  }
+
+  async deleteArticle(id: string): Promise<JoomlaResponse> {
+    const listUrl = this.getAdminUrl("index.php?option=com_content&view=articles");
+    const { html } = await this.getPage(listUrl);
+    const token = this.extractCsrfToken(html);
+
+    if (!token) {
+      return { success: false, message: "Failed to extract CSRF token" };
+    }
+
+    const formData: Record<string, string> = {
+      task: "articles.trash",
+      "cid[]": id,
+      [token.name]: token.value,
+    };
+
+    const result = await this.postPage(listUrl, formData);
+    const successMsg = /article[s]?\s+(trashed|deleted)|has been (trashed|deleted)/i.test(result.html);
+    const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
+
+    return {
+      success: successMsg,
+      message: successMsg ? "Article trashed" : (errorMsg ? errorMsg[1].trim() : "Unknown result"),
+      html: result.html,
+    };
+  }
+
+  // ==================== CATEGORIES ====================
+
+  async listCategories(extension = "com_content"): Promise<JoomlaResponse> {
+    const url = this.getAdminUrl(`index.php?option=com_categories&view=categories&extension=${extension}&limit=0`);
+    const { html } = await this.getPage(url);
+    const categories = this.parseCategoryList(html);
+    return {
+      success: true,
+      message: `Found ${categories.length} categories`,
+      data: categories,
+      html,
+    };
+  }
+
+  private parseCategoryList(html: string): Array<Record<string, string>> {
+    const categories: Array<Record<string, string>> = [];
+    const allRows = html.match(/<tr[^>]*>([\s\S]*?)<\/tr>/g);
+    if (allRows) {
+      for (const row of allRows) {
+        const cbMatch = row.match(/name="cid\[\]"\s*value="(\d+)"/);
+        if (cbMatch && !row.includes("JSelect") && !row.includes("JAll")) {
+          const title = this.extractEditLinkTitle(row, "category.edit");
+          if (!title) continue;
+          categories.push({
+            id: cbMatch[1],
+            title,
+            state: this.extractPublishedState(row),
+            parent: "Root",
+          });
+        }
+      }
+    }
+    return categories;
+  }
+
+  async getCategory(id: string): Promise<JoomlaResponse> {
+    const url = this.getAdminUrl(`index.php?option=com_categories&task=category.edit&id=${id}&extension=com_content`);
+    const { html } = await this.getPage(url);
+
+    const fields = this.extractFormFields(html);
+    const category: Record<string, string> = {};
+    category.title = this.getJFormField(fields, "title");
+    category.alias = this.getJFormField(fields, "alias");
+    category.parentId = this.getJFormField(fields, "parent_id", "1");
+    category.description = this.getJFormField(fields, "description");
+    category.published = this.getJFormField(fields, "published", "1");
+
+    return {
+      success: !!category.title,
+      message: category.title ? "Category retrieved" : "Failed to parse category form",
+      data: category,
+      html,
+    };
+  }
+
+  async createCategory(data: {
+    title: string;
+    alias?: string;
+    parentId?: string;
+    description?: string;
+    published?: string;
+    extension?: string;
+  }): Promise<JoomlaResponse> {
+    const ext = data.extension || "com_content";
+    const newCatUrl = this.getAdminUrl(
+      `index.php?option=com_categories&view=category&layout=edit&extension=${ext}`
+    );
+    const { html } = await this.getPage(newCatUrl);
+    const token = this.extractCsrfToken(html);
+
+    if (!token) {
+      return { success: false, message: "Failed to extract CSRF token" };
+    }
+
+    const formData: Record<string, string> = {
+      ...this.extractFormFields(html),
+      task: "category.save",
+      "jform[title]": data.title,
+      "jform[alias]": data.alias || "",
+      "jform[parent_id]": data.parentId || "1",
+      "jform[description]": data.description || "",
+      "jform[published]": data.published ?? "1",
+      "jform[access]": "1",
+      [token.name]: token.value,
+    };
+
+    const result = await this.postPage(newCatUrl, formData);
+    const successMsg = result.html.includes("Category saved") || result.html.includes("has been saved");
+    const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
+
+    return {
+      success: successMsg,
+      message: successMsg ? "Category saved" : (errorMsg ? errorMsg[1].trim() : "Unknown result"),
+      html: result.html,
+    };
+  }
+
+  async updateCategory(
+    id: string,
+    data: {
+      title?: string;
+      alias?: string;
+      parentId?: string;
+      description?: string;
+      published?: string;
+    }
+  ): Promise<JoomlaResponse> {
+    const editUrl = this.getAdminUrl(`index.php?option=com_categories&task=category.edit&id=${id}&extension=com_content`);
+    const { html } = await this.getPage(editUrl);
+    const existingCategory = this.parseCategoryForm(html);
+    const token = this.extractCsrfToken(html);
+
+    if (!token) {
+      return { success: false, message: "Failed to extract CSRF token" };
+    }
+
+    const formData: Record<string, string> = {
+      ...this.extractFormFields(html),
+      task: "category.save",
+      "jform[title]": data.title ?? existingCategory.title,
+      "jform[alias]": data.alias ?? existingCategory.alias,
+      "jform[parent_id]": data.parentId ?? existingCategory.parentId,
+      "jform[description]": data.description ?? existingCategory.description,
+      "jform[published]": data.published ?? existingCategory.published,
+      "jform[access]": existingCategory.access || "1",
+      [token.name]: token.value,
+    };
+
+    const result = await this.postPage(editUrl, formData);
+    const successMsg = result.html.includes("Category saved") || result.html.includes("has been saved");
+    const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
+
+    return {
+      success: successMsg,
+      message: successMsg ? "Category saved" : (errorMsg ? errorMsg[1].trim() : "Unknown result"),
+      html: result.html,
+    };
+  }
+
+  private parseCategoryForm(html: string): Record<string, string> {
+    const fields = this.extractFormFields(html);
+    const category: Record<string, string> = {};
+
+    category.title = this.getJFormField(fields, "title");
+    category.alias = this.getJFormField(fields, "alias");
+    category.parentId = this.getJFormField(fields, "parent_id", "1");
+    category.description = this.getJFormField(fields, "description");
+    category.published = this.getJFormField(fields, "published", "1");
+    category.access = this.getJFormField(fields, "access", "1");
+
+    return category;
+  }
+
+  async deleteCategory(id: string): Promise<JoomlaResponse> {
+    const listUrl = this.getAdminUrl("index.php?option=com_categories&view=categories&extension=com_content");
+    const { html } = await this.getPage(listUrl);
+    const token = this.extractCsrfToken(html);
+
+    if (!token) {
+      return { success: false, message: "Failed to extract CSRF token" };
+    }
+
+    const formData: Record<string, string> = {
+      task: "categories.trash",
+      "cid[]": id,
+      [token.name]: token.value,
+    };
+
+    const result = await this.postPage(listUrl, formData);
+    const successMsg = /categor(y|ies)\s+(trashed|deleted)|has been (trashed|deleted)/i.test(result.html);
+    const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
+
+    return {
+      success: successMsg,
+      message: successMsg ? "Category trashed" : (errorMsg ? errorMsg[1].trim() : "Unknown result"),
+      html: result.html,
+    };
+  }
+
+  // ==================== MODULES ====================
+
+  async listModules(clientId = "0"): Promise<JoomlaResponse> {
+    const url = this.getAdminUrl(`index.php?option=com_modules&view=modules&client_id=${clientId}`);
+    const { html } = await this.getPage(url);
+    const modules = this.parseModuleList(html);
+    return {
+      success: true,
+      message: `Found ${modules.length} modules`,
+      data: modules,
+      html,
+    };
+  }
+
+  private parseModuleList(html: string): Array<Record<string, string>> {
+    const modules: Array<Record<string, string>> = [];
+    const allRows = html.match(/<tr[^>]*>([\s\S]*?)<\/tr>/g);
+    if (allRows) {
+      for (const row of allRows) {
+        const cbMatch = row.match(/name="cid\[\]"\s*value="(\d+)"/);
+        if (cbMatch && !row.includes("JSelect") && !row.includes("JAll")) {
+          const title = this.extractEditLinkTitle(row, "module.edit");
+          if (!title) continue;
+          const cells = Array.from(row.matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/gi)).map((match) => this.stripHtml(match[1]));
+
+          modules.push({
+            id: cbMatch[1],
+            title,
+            state: this.extractPublishedState(row),
+            enabled: this.extractPublishedState(row),
+            position: cells[4] || "",
+            moduleType: cells[5] || "",
+          });
+        }
+      }
+    }
+    return modules;
+  }
+
+  private parseModuleTypes(html: string): ModuleType[] {
+    const types: ModuleType[] = [];
+    const links = html.matchAll(/<a\b[^>]*href=["']([^"']*option=com_modules[^"']*task=module\.add[^"']*eid=(\d+)[^"']*)["'][^>]*>([\s\S]*?)<\/a>/gi);
+
+    for (const match of links) {
+      types.push({
+        id: match[2],
+        title: this.stripHtml(match[3]),
+        href: this.decodeHtml(match[1]),
+      });
+    }
+
+    return types;
+  }
+
+  private findModuleType(types: ModuleType[], moduleType: string): ModuleType | null {
+    const lowered = moduleType.toLowerCase();
+    return types.find((type) =>
+      type.id === moduleType ||
+      type.title.toLowerCase() === lowered ||
+      (type.module || "").toLowerCase() === lowered
+    ) || null;
+  }
+
+  private parseModuleForm(html: string): Record<string, unknown> {
+    const fields = this.extractFormFields(html, "module-form");
+    const module: Record<string, unknown> = {};
+    const params: Record<string, string> = {};
+    const advanced: Record<string, string> = {};
+
+    for (const [key, value] of Object.entries(fields)) {
+      const paramsMatch = key.match(/^jform\[params\]\[([^\]]+)\]$/);
+      const advancedMatch = key.match(/^jform\[advanced\]\[([^\]]+)\]$/);
+      if (paramsMatch) params[paramsMatch[1]] = value;
+      if (advancedMatch) advanced[advancedMatch[1]] = value;
+    }
+
+    module.id = this.getJFormField(fields, "id");
+    module.title = this.getJFormField(fields, "title");
+    module.position = this.getJFormField(fields, "position");
+    module.published = this.getJFormField(fields, "published", "1");
+    module.access = this.getJFormField(fields, "access", "1");
+    module.moduleType = this.getJFormField(fields, "module");
+    module.showtitle = this.getJFormField(fields, "showtitle", "1");
+    module.ordering = this.getJFormField(fields, "ordering", "0");
+    module.style = this.getJFormField(fields, "style", "0");
+    module.language = this.getJFormField(fields, "language", "*");
+    module.note = this.getJFormField(fields, "note");
+    module.assignment = this.getJFormField(fields, "assignment", "0");
+    module.assigned = this.extractCheckedValues(html, "jform[assigned][]");
+    module.params = params;
+    module.advanced = advanced;
+    module.positions = this.extractSelectOptions(html, "jform_position");
+    module.assignmentOptions = this.extractSelectOptions(html, "jform_assignment");
+    return module;
+  }
+
+  private parseModuleFieldCatalog(html: string): Record<string, unknown> {
+    const fields = this.extractFormFields(html, "module-form");
+    const fieldNames = Object.keys(fields);
+    const paramFields = fieldNames
+      .map((name) => name.match(/^jform\[params\]\[([^\]]+)\]$/)?.[1])
+      .filter((name): name is string => !!name);
+    const advancedFields = fieldNames
+      .map((name) => name.match(/^jform\[advanced\]\[([^\]]+)\]$/)?.[1])
+      .filter((name): name is string => !!name);
+
+    return {
+      fieldNames,
+      paramFields,
+      advancedFields,
+      positions: this.extractSelectOptions(html, "jform_position"),
+      assignmentOptions: this.extractSelectOptions(html, "jform_assignment"),
+      assignmentMenuItemIds: Array.from(new Set(Array.from(html.matchAll(/name=["']jform\[assigned\]\[\]["'][^>]*value=["']([^"']+)["']/g)).map((match) => match[1]))),
+    };
+  }
+
+  async listModuleTypes(clientId = "0"): Promise<JoomlaResponse> {
+    const url = this.getAdminUrl(`index.php?option=com_modules&view=select&client_id=${clientId}`);
+    const { html } = await this.getPage(url);
+    const types = this.parseModuleTypes(html);
+
+    return {
+      success: true,
+      message: `Found ${types.length} module types`,
+      data: types,
+      html,
+    };
+  }
+
+  async listModulePositions(clientId = "0"): Promise<JoomlaResponse> {
+    const typesResult = await this.listModuleTypes(clientId);
+    const custom = ((typesResult.data || []) as ModuleType[]).find((type) => type.title.toLowerCase() === "custom") ||
+      ((typesResult.data || []) as ModuleType[])[0];
+
+    if (!custom) {
+      return { success: false, message: "No module types found to inspect positions" };
+    }
+
+    const { html } = await this.getPage(this.getAdminUrl(`index.php?option=com_modules&task=module.add&eid=${custom.id}`));
+    const positions = this.extractSelectOptions(html, "jform_position").filter((position) => position.value);
+
+    return {
+      success: true,
+      message: `Found ${positions.length} module positions`,
+      data: positions,
+      html,
+    };
+  }
+
+  async inspectModuleType(moduleType: string, clientId = "0"): Promise<JoomlaResponse> {
+    const typesResult = await this.listModuleTypes(clientId);
+    const types = (typesResult.data || []) as ModuleType[];
+    const type = this.findModuleType(types, moduleType);
+
+    if (!type) {
+      return {
+        success: false,
+        message: `Module type not found: ${moduleType}`,
+        data: types,
+      };
+    }
+
+    const { html } = await this.getPage(this.getAdminUrl(`index.php?option=com_modules&task=module.add&eid=${type.id}`));
+    return {
+      success: true,
+      message: "Module type retrieved",
+      data: {
+        ...type,
+        ...this.parseModuleFieldCatalog(html),
+        commonFields: [
+          "title",
+          "position",
+          "published",
+          "access",
+          "showtitle",
+          "ordering",
+          "style",
+          "language",
+          "note",
+          "assignment",
+          "assigned",
+        ],
+      },
+      html,
+    };
+  }
+
+  async getModule(id: string): Promise<JoomlaResponse> {
+    const url = this.getAdminUrl(`index.php?option=com_modules&task=module.edit&id=${id}`);
+    const { html } = await this.getPage(url);
+    const module = this.parseModuleForm(html);
+
+    return {
+      success: !!module.title,
+      message: module.title ? "Module retrieved" : "Failed to parse module form",
+      data: module,
+      html,
+    };
+  }
+
+  async updateModule(
+    id: string,
+    data: {
+      title?: string;
+      position?: string;
+      published?: string;
+      access?: string;
+      showtitle?: string;
+      ordering?: string;
+      style?: string;
+      language?: string;
+      note?: string;
+      assignment?: string;
+      assigned?: string[];
+      params?: Record<string, string>;
+      advanced?: Record<string, string>;
+      fieldOverrides?: Record<string, string>;
+    }
+  ): Promise<JoomlaResponse> {
+    const editUrl = this.getAdminUrl(`index.php?option=com_modules&task=module.edit&id=${id}`);
+    const { html } = await this.getPage(editUrl);
+    const existingModule = this.parseModuleForm(html);
+    const token = this.extractCsrfToken(html);
+
+    if (!token) {
+      return { success: false, message: "Failed to extract CSRF token" };
+    }
+
+    const formData: FormDataMap = {
+      ...this.extractFormFields(html),
+      task: "module.save",
+      "jform[title]": data.title ?? String(existingModule.title || ""),
+      "jform[position]": data.position ?? String(existingModule.position || ""),
+      "jform[published]": data.published ?? String(existingModule.published || "1"),
+      "jform[access]": data.access ?? String(existingModule.access || "1"),
+      "jform[showtitle]": data.showtitle ?? String(existingModule.showtitle || "1"),
+      "jform[ordering]": data.ordering ?? String(existingModule.ordering || "0"),
+      "jform[style]": data.style ?? String(existingModule.style || "0"),
+      "jform[module]": String(existingModule.moduleType || "mod_custom"),
+      "jform[language]": data.language ?? String(existingModule.language || "*"),
+      "jform[note]": data.note ?? String(existingModule.note || ""),
+      "jform[assignment]": data.assignment ?? String(existingModule.assignment || "0"),
+      [token.name]: token.value,
+    };
+
+    if (data.assigned) {
+      formData["jform[assigned][]"] = data.assigned;
+    }
+
+    for (const [key, value] of Object.entries(data.params || {})) {
+      formData[`jform[params][${key}]`] = value;
+    }
+
+    for (const [key, value] of Object.entries(data.advanced || {})) {
+      formData[`jform[advanced][${key}]`] = value;
+    }
+
+    Object.assign(formData, data.fieldOverrides || {});
+
+    const result = await this.postPage(editUrl, formData);
+    const successMsg = result.html.includes("Module saved") || result.html.includes("has been saved");
+    const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
+
+    return {
+      success: successMsg,
+      message: successMsg ? "Module saved" : (errorMsg ? errorMsg[1].trim() : "Unknown result"),
+      html: result.html,
+    };
+  }
+
+  async createModule(data: {
+    title: string;
+    moduleType: string;
+    clientId?: string;
+    position?: string;
+    published?: string;
+    access?: string;
+    showtitle?: string;
+    ordering?: string;
+    style?: string;
+    language?: string;
+    note?: string;
+    assignment?: string;
+    assigned?: string[];
+    params?: Record<string, string>;
+    advanced?: Record<string, string>;
+    content?: string;
+    fieldOverrides?: Record<string, string>;
+  }): Promise<JoomlaResponse> {
+    const typesResult = await this.listModuleTypes(data.clientId || "0");
+    const type = this.findModuleType((typesResult.data || []) as ModuleType[], data.moduleType);
+    if (!type) {
+      return { success: false, message: `Module type not found: ${data.moduleType}` };
+    }
+
+    const addUrl = this.getAdminUrl(`index.php?option=com_modules&task=module.add&eid=${type.id}`);
+    const { html } = await this.getPage(addUrl);
+    const token = this.extractCsrfToken(html);
+
+    if (!token) {
+      return { success: false, message: "Failed to extract CSRF token" };
+    }
+
+    const existingModule = this.parseModuleForm(html);
+    const formData: FormDataMap = {
+      ...this.extractFormFields(html, "module-form"),
+      task: "module.save",
+      "jform[title]": data.title,
+      "jform[position]": data.position ?? String(existingModule.position || ""),
+      "jform[published]": data.published ?? "1",
+      "jform[access]": data.access ?? "1",
+      "jform[showtitle]": data.showtitle ?? "1",
+      "jform[ordering]": data.ordering ?? String(existingModule.ordering || "0"),
+      "jform[style]": data.style ?? String(existingModule.style || "0"),
+      "jform[module]": String(existingModule.moduleType || ""),
+      "jform[language]": data.language ?? "*",
+      "jform[note]": data.note ?? "",
+      "jform[assignment]": data.assignment ?? "0",
+      [token.name]: token.value,
+    };
+
+    if (data.content !== undefined) {
+      formData["jform[content]"] = data.content;
+    }
+
+    if (data.assigned) {
+      formData["jform[assigned][]"] = data.assigned;
+    }
+
+    for (const [key, value] of Object.entries(data.params || {})) {
+      formData[`jform[params][${key}]`] = value;
+    }
+
+    for (const [key, value] of Object.entries(data.advanced || {})) {
+      formData[`jform[advanced][${key}]`] = value;
+    }
+
+    Object.assign(formData, data.fieldOverrides || {});
+
+    const result = await this.postPage(addUrl, formData);
+    const successMsg = /module saved|has been saved/i.test(result.html);
+    const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
+
+    return {
+      success: successMsg,
+      message: successMsg ? "Module saved" : (errorMsg ? errorMsg[1].trim() : "Unknown result"),
+      html: result.html,
+    };
+  }
+
+  async deleteModule(id: string): Promise<JoomlaResponse> {
+    const listUrl = this.getAdminUrl("index.php?option=com_modules&view=modules");
+    const { html } = await this.getPage(listUrl);
+    const token = this.extractCsrfToken(html);
+
+    if (!token) {
+      return { success: false, message: "Failed to extract CSRF token" };
+    }
+
+    const formData: Record<string, string> = {
+      task: "modules.trash",
+      "cid[]": id,
+      [token.name]: token.value,
+    };
+
+    const result = await this.postPage(listUrl, formData);
+    const successMsg = /module[s]?\s+(trashed|deleted)|has been (trashed|deleted)/i.test(result.html);
+    const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
+
+    return {
+      success: successMsg,
+      message: successMsg ? "Module trashed" : (errorMsg ? errorMsg[1].trim() : "Unknown result"),
+      html: result.html,
+    };
+  }
+
+  // ==================== GANTRY 5 PARTICLES ====================
+
+  private normalizeGantryParticleType(particleType: string): string {
+    return particleType.trim().toLowerCase().replace(/[\s_/-]+/g, " ");
+  }
+
+  private findGantryParticleGuide(particleType: string): GantryParticleGuide | null {
+    const normalized = this.normalizeGantryParticleType(particleType);
+    return GANTRY_PARTICLE_GUIDES.find((guide) =>
+      guide.type === particleType ||
+      this.normalizeGantryParticleType(guide.type) === normalized ||
+      this.normalizeGantryParticleType(guide.title) === normalized ||
+      guide.aliases.some((alias) => this.normalizeGantryParticleType(alias) === normalized)
+    ) || null;
+  }
+
+  private deepMergeGantryOptions(base: unknown, overrides: unknown): unknown {
+    if (Array.isArray(base) || Array.isArray(overrides)) {
+      return overrides !== undefined ? overrides : base;
+    }
+
+    if (
+      base &&
+      overrides &&
+      typeof base === "object" &&
+      typeof overrides === "object"
+    ) {
+      const merged: Record<string, unknown> = { ...(base as Record<string, unknown>) };
+      for (const [key, value] of Object.entries(overrides as Record<string, unknown>)) {
+        merged[key] = this.deepMergeGantryOptions(merged[key], value);
+      }
+      return merged;
+    }
+
+    return overrides !== undefined ? overrides : base;
+  }
+
+  private buildGantryParticlePayload(data: {
+    particleType: string;
+    particleTitle?: string;
+    options?: GantryOptions;
+    rawParticleType?: string;
+  }): Record<string, unknown> {
+    const guide = this.findGantryParticleGuide(data.particleType);
+    const particle = data.rawParticleType || guide?.type || data.particleType;
+    const title = data.particleTitle ?? guide?.title ?? data.particleType;
+    const defaults = guide?.defaults || { enabled: "1" };
+    const options = this.deepMergeGantryOptions(defaults, data.options || {}) as GantryOptions;
+
+    return {
+      type: "particle",
+      particle,
+      title,
+      options: {
+        particle: options,
+      },
+    };
+  }
+
+  private parseGantryParticleValue(value: unknown): unknown {
+    if (typeof value !== "string" || !value.trim()) return null;
+    try {
+      return JSON.parse(value);
+    } catch {
+      return value;
+    }
+  }
+
+  listGantryParticleTypes(): JoomlaResponse {
+    return {
+      success: true,
+      message: `Found ${GANTRY_PARTICLE_GUIDES.length} guided Gantry particle types`,
+      data: GANTRY_PARTICLE_GUIDES.map(({ defaults, ...guide }) => ({
+        ...guide,
+        defaultPayload: {
+          type: "particle",
+          particle: guide.type,
+          title: guide.title,
+          options: { particle: defaults },
+        },
+      })),
+    };
+  }
+
+  inspectGantryParticle(particleType: string): JoomlaResponse {
+    const guide = this.findGantryParticleGuide(particleType);
+    if (!guide) {
+      return {
+        success: false,
+        message: `No guided Gantry particle type found for: ${particleType}`,
+        data: GANTRY_PARTICLE_GUIDES.map((item) => ({ type: item.type, title: item.title, aliases: item.aliases })),
+      };
+    }
+
+    return {
+      success: true,
+      message: "Gantry particle guide retrieved",
+      data: {
+        ...guide,
+        defaultPayload: this.buildGantryParticlePayload({ particleType: guide.type }),
+        createWith: {
+          moduleType: "Gantry 5 Particle",
+          params: {
+            particle: "JSON string generated by joomla_create_gantry_particle_module",
+          },
+        },
+      },
+    };
+  }
+
+  async getGantryParticleModule(id: string): Promise<JoomlaResponse> {
+    const result = await this.getModule(id);
+    if (!result.success) return result;
+
+    const module = result.data as Record<string, unknown>;
+    const params = module.params as Record<string, unknown> | undefined;
+    const particle = this.parseGantryParticleValue(params?.particle);
+
+    return {
+      success: true,
+      message: "Gantry particle module retrieved",
+      data: {
+        ...module,
+        gantryParticle: particle,
+      },
+      html: result.html,
+    };
+  }
+
+  async createGantryParticleModule(data: {
+    title: string;
+    particleType: string;
+    particleTitle?: string;
+    rawParticleType?: string;
+    options?: GantryOptions;
+    clientId?: string;
+    position?: string;
+    published?: string;
+    access?: string;
+    showtitle?: string;
+    ordering?: string;
+    style?: string;
+    language?: string;
+    note?: string;
+    assignment?: string;
+    assigned?: string[];
+    advanced?: Record<string, string>;
+    moduleParams?: Record<string, string>;
+    fieldOverrides?: Record<string, string>;
+  }): Promise<JoomlaResponse> {
+    const payload = this.buildGantryParticlePayload(data);
+    return this.createModule({
+      title: data.title,
+      moduleType: "Gantry 5 Particle",
+      clientId: data.clientId,
+      position: data.position,
+      published: data.published,
+      access: data.access,
+      showtitle: data.showtitle,
+      ordering: data.ordering,
+      style: data.style,
+      language: data.language,
+      note: data.note,
+      assignment: data.assignment,
+      assigned: data.assigned,
+      advanced: data.advanced,
+      params: {
+        ...(data.moduleParams || {}),
+        particle: JSON.stringify(payload),
+      },
+      fieldOverrides: data.fieldOverrides,
+    });
+  }
+
+  async updateGantryParticleModule(
+    id: string,
+    data: {
+      title?: string;
+      particleType?: string;
+      particleTitle?: string;
+      rawParticleType?: string;
+      options?: GantryOptions;
+      replaceOptions?: boolean;
+      position?: string;
+      published?: string;
+      access?: string;
+      showtitle?: string;
+      ordering?: string;
+      style?: string;
+      language?: string;
+      note?: string;
+      assignment?: string;
+      assigned?: string[];
+      advanced?: Record<string, string>;
+      moduleParams?: Record<string, string>;
+      fieldOverrides?: Record<string, string>;
+    }
+  ): Promise<JoomlaResponse> {
+    const existing = await this.getGantryParticleModule(id);
+    if (!existing.success) return existing;
+
+    const module = existing.data as Record<string, unknown>;
+    const current = (module.gantryParticle || {}) as Record<string, unknown>;
+    const currentOptions = ((current.options as Record<string, unknown> | undefined)?.particle || {}) as GantryOptions;
+    const particleType = data.particleType || String(current.particle || "");
+    const payload = this.buildGantryParticlePayload({
+      particleType,
+      particleTitle: data.particleTitle || String(current.title || ""),
+      rawParticleType: data.rawParticleType || String(current.particle || ""),
+      options: data.replaceOptions ? (data.options || {}) : (this.deepMergeGantryOptions(currentOptions, data.options || {}) as GantryOptions),
+    });
+
+    return this.updateModule(id, {
+      title: data.title,
+      position: data.position,
+      published: data.published,
+      access: data.access,
+      showtitle: data.showtitle,
+      ordering: data.ordering,
+      style: data.style,
+      language: data.language,
+      note: data.note,
+      assignment: data.assignment,
+      assigned: data.assigned,
+      advanced: data.advanced,
+      params: {
+        ...(data.moduleParams || {}),
+        particle: JSON.stringify(payload),
+      },
+      fieldOverrides: data.fieldOverrides,
+    });
+  }
+
+  // ==================== GANTRY 5 THEMES / OUTLINES ====================
+
+  private getGantryThemeKey(theme?: string): string {
+    const value = (theme || "rt_studius").trim();
+    if (!value || value.toLowerCase() === "studius") return "rt_studius";
+    return value;
+  }
+
+  private getGantryOutlineTabUrl(outline = "default", tab = "layout", theme?: string): string {
+    const safeOutline = encodeURIComponent(outline || "default");
+    const safeTab = encodeURIComponent(tab || "layout");
+    const safeTheme = encodeURIComponent(this.getGantryThemeKey(theme));
+    return this.getAdminUrl(`index.php?option=com_gantry5&view=configurations/${safeOutline}/${safeTab}&theme=${safeTheme}`);
+  }
+
+  private parseJsonAttribute(value: string | null): unknown {
+    if (!value) return null;
+    const decoded = this.decodeHtmlEntities(value);
+    try {
+      return JSON.parse(decoded);
+    } catch {
+      try {
+        return JSON.parse(value);
+      } catch {
+        return null;
+      }
+    }
+  }
+
+  private parseGantryAjaxVars(html: string): Record<string, string> {
+    const vars: Record<string, string> = {};
+    for (const key of ["GANTRY_AJAX_SUFFIX", "GANTRY_AJAX_URL", "GANTRY_AJAX_CONF_URL", "GANTRY_PLATFORM"]) {
+      const match = html.match(new RegExp(`var\\s+${key}\\s*=\\s*['"]([^'"]*)['"]`, "i"));
+      if (match) vars[key] = this.decodeHtml(match[1]);
+    }
+    return vars;
+  }
+
+  private parseGantryOutlines(html: string): Array<Record<string, unknown>> {
+    const selectMatch = html.match(/<select\b[^>]*id=["']configuration-selector["'][^>]*>([\s\S]*?)<\/select>/i);
+    if (!selectMatch) return [];
+
+    const outlines: Array<Record<string, unknown>> = [];
+    const selectHtml = selectMatch[1];
+    const collectOptions = (chunk: string, group: string) => {
+      for (const match of chunk.matchAll(/<option\b([^>]*)>([\s\S]*?)<\/option>/gi)) {
+        const tag = match[0];
+        const value = this.getAttr(tag, "value") || "";
+        if (!value) continue;
+        const data = this.parseJsonAttribute(this.getRawAttr(tag, "data-data")) as Record<string, unknown> | null;
+        outlines.push({
+          id: value,
+          title: this.stripHtml(match[2]),
+          group,
+          selected: /\bselected\b/i.test(tag),
+          url: typeof data?.url === "string" ? this.decodeHtml(data.url) : "",
+          params: data?.params || {},
+        });
+      }
+    };
+
+    const chunks = selectHtml.split(/(<optgroup\b[^>]*label=["'][^"']*["'][^>]*>[\s\S]*?<\/optgroup>)/gi);
+    for (const chunk of chunks) {
+      if (!chunk.trim()) continue;
+      const groupMatch = chunk.match(/^<optgroup\b[^>]*label=["']([^"']*)["'][^>]*>([\s\S]*?)<\/optgroup>$/i);
+      if (groupMatch) {
+        collectOptions(groupMatch[2], this.decodeHtml(groupMatch[1]));
+      } else {
+        collectOptions(chunk, "Base Outline");
+      }
+    }
+
+    return outlines;
+  }
+
+  private parseGantryTabs(html: string): Record<string, string> {
+    const tabs: Record<string, string> = {};
+    for (const match of html.matchAll(/<a\b[^>]*data-g5-nav=["']([^"']+)["'][^>]*href=["']([^"']+)["'][^>]*>/gi)) {
+      tabs[match[1]] = this.decodeHtml(match[2]);
+    }
+    const pageMatch = html.match(/<a\b[^>]*href=["']([^"']*view=configurations\/[^"']*\/page[^"']*)["'][^>]*>[\s\S]*?<span>\s*Page Settings\s*<\/span>/i);
+    if (pageMatch) tabs.page = this.decodeHtml(pageMatch[1]);
+    return tabs;
+  }
+
+  private parseGantryParticleCatalog(html: string): Array<Record<string, unknown>> {
+    const catalog: Array<Record<string, unknown>> = [];
+    for (const match of html.matchAll(/<li\b[^>]*data-lm-blocktype=["']([^"']+)["'][^>]*>[\s\S]*?<\/li>/gi)) {
+      const tag = match[0];
+      catalog.push({
+        blockType: this.getAttr(tag, "data-lm-blocktype") || match[1],
+        subtype: this.getAttr(tag, "data-lm-subtype") || "",
+        icon: this.getAttr(tag, "data-lm-icon") || "",
+        title: this.stripHtml(tag.match(/<span\b[^>]*class=["'][^"']*particle-title[^"']*["'][^>]*>([\s\S]*?)<\/span>/i)?.[1] || ""),
+        disabled: /\bdata-lm-disabled\b/i.test(tag),
+        noDrag: /\bdata-lm-nodrag\b/i.test(tag),
+        note: this.getAttr(tag, "title") || "",
+      });
+    }
+    return catalog;
+  }
+
+  private parseGantryLayoutRoot(html: string): { preset: unknown; root: GantryLayoutNode[] } {
+    const tagMatch = html.match(/<div\b[^>]*class=["'][^"']*lm-blocks[^"']*["'][^>]*>/i);
+    const tag = tagMatch?.[0] || "";
+    const preset = this.parseJsonAttribute(this.getRawAttr(tag, "data-lm-preset"));
+    const root = this.parseJsonAttribute(this.getRawAttr(tag, "data-lm-root"));
+    return {
+      preset,
+      root: Array.isArray(root) ? root as GantryLayoutNode[] : [],
+    };
+  }
+
+  private summarizeGantryLayout(root: GantryLayoutNode[]): Record<string, unknown> {
+    const sections: Array<Record<string, unknown>> = [];
+    const particles: Array<Record<string, unknown>> = [];
+    const positions: Array<Record<string, unknown>> = [];
+    const modules: Array<Record<string, unknown>> = [];
+    const nodes: Array<Record<string, unknown>> = [];
+
+    const visit = (node: GantryLayoutNode, path: string[], parent?: GantryLayoutNode) => {
+      const id = node.id || "";
+      const nodePath = [...path, id || node.type || "node"].filter(Boolean);
+      const record = {
+        id,
+        title: node.title || "",
+        type: node.type || "",
+        subtype: node.subtype || "",
+        path: nodePath.join(" > "),
+        parentId: parent?.id || "",
+        attributes: node.attributes || {},
+        childCount: Array.isArray(node.children) ? node.children.length : 0,
+      };
+      nodes.push(record);
+      if (node.type === "section" || node.type === "container" || node.type === "offcanvas") sections.push(record);
+      if (node.type === "particle") particles.push(record);
+      if (node.type === "position") {
+        positions.push(record);
+        if (node.subtype === "module") modules.push(record);
+      }
+      for (const child of node.children || []) visit(child, nodePath, node);
+    };
+
+    for (const node of root) visit(node, []);
+
+    return {
+      counts: {
+        nodes: nodes.length,
+        sections: sections.length,
+        particles: particles.length,
+        positions: positions.length,
+        moduleInstances: modules.length,
+      },
+      sections,
+      particles,
+      positions,
+      moduleInstances: modules,
+      nodes,
+    };
+  }
+
+  private findGantryLayoutNode(root: GantryLayoutNode[], id: string): { node: GantryLayoutNode; parent: GantryLayoutNode | null } | null {
+    const visit = (node: GantryLayoutNode, parent: GantryLayoutNode | null): { node: GantryLayoutNode; parent: GantryLayoutNode | null } | null => {
+      if (node.id === id) return { node, parent };
+      for (const child of node.children || []) {
+        const found = visit(child, node);
+        if (found) return found;
+      }
+      return null;
+    };
+    for (const node of root) {
+      const found = visit(node, null);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  private gantryNodeContains(node: GantryLayoutNode, id: string): boolean {
+    if (node.id === id) return true;
+    return (node.children || []).some((child) => this.gantryNodeContains(child, id));
+  }
+
+  private detachGantryLayoutNode(root: GantryLayoutNode[], id: string): { node: GantryLayoutNode; parentId: string } | null {
+    const scan = (children: GantryLayoutNode[], parentId = ""): { node: GantryLayoutNode; parentId: string } | null => {
+      const index = children.findIndex((child) => child.id === id);
+      if (index >= 0) {
+        const [node] = children.splice(index, 1);
+        return { node, parentId };
+      }
+      for (const child of children) {
+        const found = scan(child.children || [], child.id || "");
+        if (found) return found;
+      }
+      return null;
+    };
+    return scan(root);
+  }
+
+  private async postGantryJson(url: string, data: FormDataMap): Promise<Record<string, unknown>> {
+    const page = await this.getPage(url);
+    const token = this.extractCsrfToken(page.html);
+    if (token) {
+      data[token.name] = token.value;
+      this.tokenName = token.name;
+    } else if (this.tokenName) {
+      data[this.tokenName] = "1";
+    }
+    const separator = url.includes("?") ? "&" : "?";
+    const result = await this.request(`${url}${separator}format=json`, {
+      method: "POST",
+      body: this.getFormUrlEncoded(data),
+      contentType: "application/x-www-form-urlencoded",
+    });
+    try {
+      return JSON.parse(result.body) as Record<string, unknown>;
+    } catch {
+      return {
+        success: false,
+        status: result.status,
+        message: "Gantry save did not return JSON",
+        html: result.body.substring(0, 2000),
+      };
+    }
+  }
+
+  private parseGantrySettingsFields(html: string): Array<Record<string, unknown>> {
+    const fields: Array<Record<string, unknown>> = [];
+    const labelFor = (id: string) => {
+      if (!id) return "";
+      const escaped = id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const match = html.match(new RegExp(`<label\\b[^>]*for=["']${escaped}["'][^>]*>([\\s\\S]*?)<\\/label>`, "i"));
+      return match ? this.stripHtml(match[1]) : "";
+    };
+
+    for (const match of html.matchAll(/<(input|textarea|select)\b[^>]*>/gi)) {
+      const tag = match[0];
+      const name = this.getAttr(tag, "name");
+      if (!name) continue;
+      const id = this.getAttr(tag, "id") || "";
+      let value = this.getAttr(tag, "value") || "";
+      let options: Array<Record<string, unknown>> | undefined;
+      const kind = match[1].toLowerCase();
+      if (kind === "textarea") {
+        const body = html.slice(match.index || 0).match(/^<textarea\b[^>]*>([\s\S]*?)<\/textarea>/i);
+        value = this.decodeHtml(body?.[1] || "");
+      } else if (kind === "select") {
+        const body = html.slice(match.index || 0).match(/^<select\b[^>]*>([\s\S]*?)<\/select>/i);
+        if (body) {
+          const selectHtml = body[0];
+          value = this.getSelectedValue(selectHtml);
+          options = Array.from(selectHtml.matchAll(/<option\b[^>]*>([\s\S]*?)<\/option>/gi)).map((option) => ({
+            value: this.getAttr(option[0], "value") || "",
+            label: this.stripHtml(option[1]),
+            selected: /\bselected\b/i.test(option[0]),
+          }));
+        }
+      }
+      fields.push({
+        name,
+        id,
+        label: labelFor(id),
+        kind,
+        inputType: kind === "input" ? (this.getAttr(tag, "type") || "text") : kind,
+        value,
+        options,
+      });
+    }
+
+    return fields;
+  }
+
+  async listGantry5Outlines(theme = "rt_studius"): Promise<JoomlaResponse> {
+    const url = this.getGantryOutlineTabUrl("default", "layout", theme);
+    const { html } = await this.getPage(url);
+    const outlines = this.parseGantryOutlines(html);
+    return {
+      success: outlines.length > 0,
+      message: outlines.length > 0 ? `Found ${outlines.length} Gantry 5 Studius outlines` : "No Gantry 5 outlines found",
+      data: {
+        theme: this.getGantryThemeKey(theme),
+        tabs: this.parseGantryTabs(html),
+        ajax: this.parseGantryAjaxVars(html),
+        outlines,
+      },
+    };
+  }
+
+  async getGantry5Layout(outline = "default", options: { theme?: string; includeRaw?: boolean } = {}): Promise<JoomlaResponse> {
+    const url = this.getGantryOutlineTabUrl(outline, "layout", options.theme);
+    const { html } = await this.getPage(url);
+    const { preset, root } = this.parseGantryLayoutRoot(html);
+    const summary = this.summarizeGantryLayout(root);
+    return {
+      success: root.length > 0,
+      message: root.length > 0 ? "Gantry 5 layout retrieved" : "No Gantry 5 layout tree found",
+      data: {
+        theme: this.getGantryThemeKey(options.theme),
+        outline,
+        tab: "layout",
+        url,
+        tabs: this.parseGantryTabs(html),
+        preset,
+        particleCatalog: this.parseGantryParticleCatalog(html),
+        layout: summary,
+        root: options.includeRaw ? root : undefined,
+      },
+      html: options.includeRaw ? html.substring(0, 50000) : undefined,
+    };
+  }
+
+  async getGantry5PageSettings(outline = "default", options: { theme?: string; includeHtml?: boolean } = {}): Promise<JoomlaResponse> {
+    const url = this.getGantryOutlineTabUrl(outline, "page", options.theme);
+    const { html } = await this.getPage(url);
+    const fields = this.parseGantrySettingsFields(html);
+    return {
+      success: true,
+      message: `Found ${fields.length} Gantry 5 page setting fields`,
+      data: {
+        theme: this.getGantryThemeKey(options.theme),
+        outline,
+        tab: "page",
+        url,
+        tabs: this.parseGantryTabs(html),
+        fields,
+        values: this.extractFormFields(html),
+      },
+      html: options.includeHtml ? html.substring(0, 50000) : undefined,
+    };
+  }
+
+  async getGantry5ParticleDefaults(outline = "default", options: { theme?: string; includeHtml?: boolean } = {}): Promise<JoomlaResponse> {
+    const url = this.getGantryOutlineTabUrl(outline, "settings", options.theme);
+    const { html } = await this.getPage(url);
+    const fields = this.parseGantrySettingsFields(html);
+    return {
+      success: true,
+      message: `Found ${fields.length} Gantry 5 particle default fields`,
+      data: {
+        theme: this.getGantryThemeKey(options.theme),
+        outline,
+        tab: "settings",
+        url,
+        tabs: this.parseGantryTabs(html),
+        fields,
+        values: this.extractFormFields(html),
+      },
+      html: options.includeHtml ? html.substring(0, 50000) : undefined,
+    };
+  }
+
+  async inspectGantry5ParticleType(particleType: string, outline = "default", options: { theme?: string } = {}): Promise<JoomlaResponse> {
+    const layout = await this.getGantry5Layout(outline, { theme: options.theme, includeRaw: true });
+    const data = layout.data as Record<string, unknown>;
+    const root = data.root as GantryLayoutNode[] | undefined;
+    const normalized = this.normalizeGantryParticleType(particleType);
+    const instances: Array<Record<string, unknown>> = [];
+    const visit = (node: GantryLayoutNode, path: string[]) => {
+      const nodePath = [...path, node.id || node.type || "node"].filter(Boolean);
+      if (node.type === "particle" && this.normalizeGantryParticleType(node.subtype || "") === normalized) {
+        instances.push({
+          id: node.id || "",
+          title: node.title || "",
+          subtype: node.subtype || "",
+          path: nodePath.join(" > "),
+          attributes: node.attributes || {},
+        });
+      }
+      for (const child of node.children || []) visit(child, nodePath);
+    };
+    for (const node of root || []) visit(node, []);
+
+    const keys = new Set<string>();
+    const collectKeys = (value: unknown, prefix = "") => {
+      if (!value || typeof value !== "object" || Array.isArray(value)) return;
+      for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+        const path = prefix ? `${prefix}.${key}` : key;
+        keys.add(path);
+        collectKeys(nested, path);
+      }
+    };
+    for (const instance of instances) collectKeys(instance.attributes);
+
+    const guide = this.findGantryParticleGuide(particleType);
+    return {
+      success: true,
+      message: `Found ${instances.length} ${particleType} instance(s) in outline ${outline}`,
+      data: {
+        theme: this.getGantryThemeKey(options.theme),
+        outline,
+        particleType,
+        guidedParticleGuide: guide ? this.inspectGantryParticle(guide.type).data : null,
+        discoveredAttributePaths: Array.from(keys).sort(),
+        instances,
+      },
+    };
+  }
+
+  async saveGantry5LayoutRaw(outline = "default", data: { root: unknown; preset?: unknown; theme?: string }): Promise<JoomlaResponse> {
+    if (!Array.isArray(data.root)) {
+      return { success: false, message: "root must be the full Gantry layout array from joomla_gantry5_get_layout includeRaw=true" };
+    }
+    const url = this.getGantryOutlineTabUrl(outline, "layout", data.theme);
+    const response = await this.postGantryJson(url, {
+      layout: JSON.stringify(data.root),
+      preset: JSON.stringify(data.preset || "default"),
+    });
+    const success = response.success === true;
+    return {
+      success,
+      message: success ? "Gantry 5 layout saved" : String(response.message || "Gantry 5 layout save failed"),
+      data: {
+        theme: this.getGantryThemeKey(data.theme),
+        outline,
+        response,
+      },
+    };
+  }
+
+  async updateGantry5ParticleInstance(
+    outline = "default",
+    particleId: string,
+    attributes: Record<string, unknown>,
+    options: { theme?: string; replaceAttributes?: boolean; dryRun?: boolean } = {}
+  ): Promise<JoomlaResponse> {
+    const layout = await this.getGantry5Layout(outline, { theme: options.theme, includeRaw: true });
+    if (!layout.success) return layout;
+    const data = layout.data as Record<string, unknown>;
+    const root = data.root as GantryLayoutNode[];
+    const found = this.findGantryLayoutNode(root, particleId);
+    if (!found) return { success: false, message: `Layout node not found: ${particleId}` };
+    if (found.node.type !== "particle") return { success: false, message: `Node ${particleId} is ${found.node.type || "unknown"}, not a particle` };
+
+    const before = { ...(found.node.attributes || {}) };
+    found.node.attributes = options.replaceAttributes
+      ? { ...attributes }
+      : (this.deepMergeGantryOptions(found.node.attributes || {}, attributes) as Record<string, unknown>);
+
+    if (options.dryRun) {
+      return {
+        success: true,
+        message: "Dry run: Gantry 5 particle instance would be updated",
+        data: { outline, particleId, before, after: found.node.attributes, root },
+      };
+    }
+
+    const save = await this.saveGantry5LayoutRaw(outline, { root, preset: data.preset, theme: options.theme });
+    return {
+      success: save.success,
+      message: save.success ? "Gantry 5 particle instance updated" : save.message,
+      data: { outline, particleId, before, after: found.node.attributes, save: save.data },
+    };
+  }
+
+  async updateGantry5LayoutNodeAttributes(
+    outline = "default",
+    nodeId: string,
+    attributes: Record<string, unknown>,
+    options: { theme?: string; replaceAttributes?: boolean; dryRun?: boolean } = {}
+  ): Promise<JoomlaResponse> {
+    const layout = await this.getGantry5Layout(outline, { theme: options.theme, includeRaw: true });
+    if (!layout.success) return layout;
+    const data = layout.data as Record<string, unknown>;
+    const root = data.root as GantryLayoutNode[];
+    const found = this.findGantryLayoutNode(root, nodeId);
+    if (!found) return { success: false, message: `Layout node not found: ${nodeId}` };
+
+    const before = { ...(found.node.attributes || {}) };
+    found.node.attributes = options.replaceAttributes
+      ? { ...attributes }
+      : (this.deepMergeGantryOptions(found.node.attributes || {}, attributes) as Record<string, unknown>);
+
+    if (options.dryRun) {
+      return {
+        success: true,
+        message: "Dry run: Gantry 5 layout node attributes would be updated",
+        data: { outline, nodeId, type: found.node.type, subtype: found.node.subtype, before, after: found.node.attributes, root },
+      };
+    }
+
+    const save = await this.saveGantry5LayoutRaw(outline, { root, preset: data.preset, theme: options.theme });
+    return {
+      success: save.success,
+      message: save.success ? "Gantry 5 layout node attributes updated" : save.message,
+      data: { outline, nodeId, type: found.node.type, subtype: found.node.subtype, before, after: found.node.attributes, save: save.data },
+    };
+  }
+
+  async diffGantry5Layout(data: {
+    outline?: string;
+    outlineB?: string;
+    snapshotId?: string;
+    theme?: string;
+    includeRaw?: boolean;
+  }): Promise<JoomlaResponse> {
+    const outline = data.outline || "default";
+    const live = await this.getGantry5Layout(outline, { theme: data.theme, includeRaw: true });
+    if (!live.success) return live;
+    const liveData = live.data as Record<string, unknown>;
+    const liveRoot = liveData.root as GantryLayoutNode[];
+    let compareRoot: GantryLayoutNode[] = [];
+    let compareLabel = "";
+
+    if (data.snapshotId) {
+      const snapshot = this.readSnapshot(data.snapshotId);
+      if (!snapshot) return { success: false, message: `Snapshot not found: ${data.snapshotId}` };
+      const payload = snapshot.payload as Record<string, unknown>;
+      compareRoot = ((payload.root || (payload.layout as Record<string, unknown> | undefined)?.root) || []) as GantryLayoutNode[];
+      compareLabel = `snapshot:${data.snapshotId}`;
+    } else if (data.outlineB) {
+      const other = await this.getGantry5Layout(data.outlineB, { theme: data.theme, includeRaw: true });
+      if (!other.success) return other;
+      compareRoot = ((other.data as Record<string, unknown>).root || []) as GantryLayoutNode[];
+      compareLabel = `outline:${data.outlineB}`;
+    } else {
+      return { success: false, message: "snapshotId or outlineB is required for a Gantry layout diff" };
+    }
+
+    const liveJson = JSON.stringify(liveRoot);
+    const compareJson = JSON.stringify(compareRoot);
+    const liveSummary = this.summarizeGantryLayout(liveRoot);
+    const compareSummary = this.summarizeGantryLayout(compareRoot);
+    return {
+      success: true,
+      message: liveJson === compareJson ? "Gantry 5 layouts match" : "Gantry 5 layouts differ",
+      data: {
+        theme: this.getGantryThemeKey(data.theme),
+        outline,
+        compareTo: compareLabel,
+        changed: liveJson !== compareJson,
+        liveSummary,
+        compareSummary,
+        liveRoot: data.includeRaw ? liveRoot : undefined,
+        compareRoot: data.includeRaw ? compareRoot : undefined,
+      },
+    };
+  }
+
+  async moveGantry5LayoutNode(
+    outline = "default",
+    nodeId: string,
+    targetParentId: string,
+    options: { theme?: string; dryRun?: boolean } = {}
+  ): Promise<JoomlaResponse> {
+    const layout = await this.getGantry5Layout(outline, { theme: options.theme, includeRaw: true });
+    if (!layout.success) return layout;
+    const data = layout.data as Record<string, unknown>;
+    const root = data.root as GantryLayoutNode[];
+    const found = this.findGantryLayoutNode(root, nodeId);
+    const target = this.findGantryLayoutNode(root, targetParentId);
+    if (!found) return { success: false, message: `Layout node not found: ${nodeId}` };
+    if (!target) return { success: false, message: `Target parent node not found: ${targetParentId}` };
+    if (nodeId === targetParentId || this.gantryNodeContains(found.node, targetParentId)) {
+      return { success: false, message: "Cannot move a node into itself or one of its children" };
+    }
+
+    const before = {
+      nodeId,
+      previousParentId: found.parent?.id || "",
+      targetParentId,
+      summary: this.summarizeGantryLayout(root),
+    };
+    const detached = this.detachGantryLayoutNode(root, nodeId);
+    if (!detached) return { success: false, message: `Unable to detach layout node: ${nodeId}` };
+    const targetAfterDetach = this.findGantryLayoutNode(root, targetParentId);
+    if (!targetAfterDetach) return { success: false, message: `Target parent disappeared after detach: ${targetParentId}` };
+    targetAfterDetach.node.children = targetAfterDetach.node.children || [];
+    targetAfterDetach.node.children.push(detached.node);
+
+    if (options.dryRun) {
+      return {
+        success: true,
+        message: "Dry run: Gantry 5 layout node would be moved",
+        data: { outline, before, after: this.summarizeGantryLayout(root), root },
+      };
+    }
+
+    const save = await this.saveGantry5LayoutRaw(outline, { root, preset: data.preset, theme: options.theme });
+    return {
+      success: save.success,
+      message: save.success ? "Gantry 5 layout node moved" : save.message,
+      data: { outline, before, after: this.summarizeGantryLayout(root), save: save.data },
+    };
+  }
+
+  async addGantry5ParticleInstance(
+    outline = "default",
+    targetParentId: string,
+    particleType: string,
+    data: { title?: string; attributes?: Record<string, unknown>; particleId?: string; theme?: string; dryRun?: boolean } = {}
+  ): Promise<JoomlaResponse> {
+    const layout = await this.getGantry5Layout(outline, { theme: data.theme, includeRaw: true });
+    if (!layout.success) return layout;
+    const layoutData = layout.data as Record<string, unknown>;
+    const root = layoutData.root as GantryLayoutNode[];
+    const target = this.findGantryLayoutNode(root, targetParentId);
+    if (!target) return { success: false, message: `Target parent node not found: ${targetParentId}` };
+    const id = data.particleId || `${this.normalizeGantryParticleType(particleType)}-${randomUUID().slice(0, 8)}`;
+    if (this.findGantryLayoutNode(root, id)) return { success: false, message: `Layout node already exists: ${id}` };
+    const node: GantryLayoutNode = {
+      id,
+      type: "particle",
+      subtype: this.normalizeGantryParticleType(particleType),
+      title: data.title || particleType,
+      attributes: { enabled: 1, ...(data.attributes || {}) },
+      children: [],
+    };
+    const before = this.summarizeGantryLayout(root);
+    target.node.children = target.node.children || [];
+    target.node.children.push(node);
+
+    if (data.dryRun) {
+      return {
+        success: true,
+        message: "Dry run: Gantry 5 particle instance would be added",
+        data: { outline, targetParentId, node, before, after: this.summarizeGantryLayout(root), root },
+      };
+    }
+
+    const save = await this.saveGantry5LayoutRaw(outline, { root, preset: layoutData.preset, theme: data.theme });
+    return {
+      success: save.success,
+      message: save.success ? "Gantry 5 particle instance added" : save.message,
+      data: { outline, targetParentId, node, before, after: this.summarizeGantryLayout(root), save: save.data },
+    };
+  }
+
+  async deleteGantry5LayoutNode(
+    outline = "default",
+    nodeId: string,
+    options: { theme?: string; dryRun?: boolean } = {}
+  ): Promise<JoomlaResponse> {
+    const layout = await this.getGantry5Layout(outline, { theme: options.theme, includeRaw: true });
+    if (!layout.success) return layout;
+    const data = layout.data as Record<string, unknown>;
+    const root = data.root as GantryLayoutNode[];
+    const found = this.findGantryLayoutNode(root, nodeId);
+    if (!found) return { success: false, message: `Layout node not found: ${nodeId}` };
+    const before = { node: found.node, parentId: found.parent?.id || "", summary: this.summarizeGantryLayout(root) };
+    const detached = this.detachGantryLayoutNode(root, nodeId);
+    if (!detached) return { success: false, message: `Unable to delete layout node: ${nodeId}` };
+
+    if (options.dryRun) {
+      return {
+        success: true,
+        message: "Dry run: Gantry 5 layout node would be deleted",
+        data: { outline, nodeId, before, after: this.summarizeGantryLayout(root), root },
+      };
+    }
+
+    const save = await this.saveGantry5LayoutRaw(outline, { root, preset: data.preset, theme: options.theme });
+    return {
+      success: save.success,
+      message: save.success ? "Gantry 5 layout node deleted" : save.message,
+      data: { outline, nodeId, before, after: this.summarizeGantryLayout(root), save: save.data },
+    };
+  }
+
+  async toggleModule(id: string, state: string): Promise<JoomlaResponse> {
+    const listUrl = this.getAdminUrl("index.php?option=com_modules&view=modules");
+    const { html } = await this.getPage(listUrl);
+    const token = this.extractCsrfToken(html);
+
+    if (!token) {
+      return { success: false, message: "Failed to extract CSRF token" };
+    }
+
+    const task = state === "1" ? "modules.publish" : "modules.unpublish";
+    const formData: Record<string, string> = {
+      task,
+      "cid[]": id,
+      [token.name]: token.value,
+    };
+
+    const result = await this.postPage(listUrl, formData);
+    const successMsg = /module[s]?\s+(published|unpublished)|has been/i.test(result.html);
+    const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
+
+    return {
+      success: successMsg,
+      message: successMsg ? `Module ${state === "1" ? "published" : "unpublished"}` : (errorMsg ? errorMsg[1].trim() : "Unknown result"),
+      html: result.html,
+    };
+  }
+
+  // ==================== MENUS ====================
+
+  async listMenus(): Promise<JoomlaResponse> {
+    const url = this.getAdminUrl("index.php?option=com_menus&view=menus");
+    const { html } = await this.getPage(url);
+
+    const menus: Array<Record<string, string>> = [];
+    const allRows = html.match(/<tr[^>]*>([\s\S]*?)<\/tr>/g);
+    if (allRows) {
+      for (const row of allRows) {
+        const cbMatch = row.match(/name="cid\[\]"\s*value="(\d+)"/);
+        if (cbMatch && !row.includes("JSelect") && !row.includes("JAll")) {
+          const titleMatch = row.match(/<a\b[^>]*view=items&amp;menutype=[^"']*["'][^>]*>([\s\S]*?)<\/a>/i);
+          const menuTypeMatch = row.match(/task=menu\.edit&amp;id=\d+[^"']*["'][^>]*>([\s\S]*?)<\/a>/i);
+          const title = titleMatch ? this.stripHtml(titleMatch[1]) : "";
+          if (!title) continue;
+          menus.push({
+            id: cbMatch[1],
+            title,
+            menuType: menuTypeMatch ? this.stripHtml(menuTypeMatch[1]) : "",
+          });
+        }
+      }
+    }
+
+    return {
+      success: true,
+      message: `Found ${menus.length} menus`,
+      data: menus,
+      html,
+    };
+  }
+
+  async createMenu(data: {
+    title: string;
+    menuType?: string;
+    description?: string;
+    cssClasses?: string;
+  }): Promise<JoomlaResponse> {
+    const menuType = data.menuType || data.title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 24);
+    const url = this.getAdminUrl("index.php?option=com_menus&task=menu.add");
+    const { html } = await this.getPage(url);
+    const token = this.extractCsrfToken(html);
+
+    if (!token) {
+      return { success: false, message: "Failed to extract CSRF token" };
+    }
+
+    const formData: Record<string, string> = {
+      ...this.extractFormFields(html, "item-form"),
+      task: "menu.save",
+      "jform[title]": data.title,
+      "jform[menutype]": menuType,
+      "jform[description]": data.description || "",
+      "jform[css_classes]": data.cssClasses || "",
+      [token.name]: token.value,
+    };
+
+    const result = await this.postPage(url, formData);
+    const successMsg = /menu saved|has been saved|item saved/i.test(result.html);
+    const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
+
+    return {
+      success: successMsg,
+      message: successMsg ? "Menu saved" : (errorMsg ? errorMsg[1].trim() : "Unknown result"),
+      data: {
+        title: data.title,
+        menuType,
+      },
+      html: result.html,
+    };
+  }
+
+  async listMenuItems(menuId: string): Promise<JoomlaResponse> {
+    const url = this.getAdminUrl(`index.php?option=com_menus&view=items&menutype=${menuId}&limit=0`);
+    const { html } = await this.getPage(url);
+
+    const items: Array<Record<string, string>> = [];
+    const allRows = html.match(/<tr[^>]*>([\s\S]*?)<\/tr>/g);
+    if (allRows) {
+      for (const row of allRows) {
+        const cbMatch = row.match(/name="cid\[\]"\s*value="(\d+)"/);
+        if (cbMatch && !row.includes("JSelect") && !row.includes("JAll")) {
+          const title = this.extractEditLinkTitle(row, "item.edit");
+          if (!title) continue;
+          const typeMatch = row.match(/<div\b[^>]*title=["'][^"']*["'][^>]*>\s*<span\b[^>]*class=["']small["'][^>]*>([\s\S]*?)<\/span>/i);
+          items.push({
+            id: cbMatch[1],
+            title,
+            state: this.extractPublishedState(row),
+            type: typeMatch ? this.stripHtml(typeMatch[1]) : "",
+          });
+        }
+      }
+    }
+
+    return {
+      success: true,
+      message: `Found ${items.length} menu items`,
+      data: items,
+      html,
+    };
+  }
+
+  async listMenuItemTypes(): Promise<JoomlaResponse> {
+    const url = this.getAdminUrl("index.php?option=com_menus&view=menutypes&tmpl=component&client_id=0&recordId=0");
+    const { html } = await this.getPage(url);
+    const types = this.parseMenuItemTypes(html);
+
+    return {
+      success: true,
+      message: `Found ${types.length} menu item types`,
+      data: types,
+      html,
+    };
+  }
+
+  async getMenuItem(id: string): Promise<JoomlaResponse> {
+    const url = this.getAdminUrl(`index.php?option=com_menus&task=item.edit&id=${id}`);
+    const { html } = await this.getPage(url);
+    const item = this.parseMenuItemForm(html);
+
+    return {
+      success: !!item.title,
+      message: item.title ? "Menu item retrieved" : "Failed to parse menu item form",
+      data: item,
+      html,
+    };
+  }
+
+  async inspectMenuItemType(itemType: string): Promise<JoomlaResponse> {
+    const typesResult = await this.listMenuItemTypes();
+    const types = (typesResult.data || []) as MenuItemType[];
+    const type = this.findMenuItemType(types, itemType);
+
+    if (!type) {
+      return {
+        success: false,
+        message: `Menu item type not found: ${itemType}`,
+        data: types.map(({ group, label, title, request }) => ({ group, label, title, request })),
+      };
+    }
+
+    return {
+      success: true,
+      message: "Menu item type retrieved",
+      data: {
+        ...type,
+        link: this.buildLinkFromRequest(type.request),
+        requestFields: Object.keys(type.request),
+        commonFields: [
+          "title",
+          "menuType",
+          "alias",
+          "parentId",
+          "published",
+          "access",
+          "language",
+          "browserNav",
+          "home",
+          "note",
+        ],
+        overrideExamples: [
+          "request.id for Single Article or Category Blog/List",
+          "params.menu-anchor_title for link title attributes",
+          "params.menu_image for menu images",
+          "fieldOverrides can set any raw Joomla field name such as jform[params][show_page_heading]",
+        ],
+      },
+    };
+  }
+
+  async createMenuItem(data: {
+    title: string;
+    menuType: string;
+    itemType: string;
+    alias?: string;
+    link?: string;
+    parentId?: string;
+    published?: string;
+    access?: string;
+    language?: string;
+    browserNav?: string;
+    home?: string;
+    note?: string;
+    request?: Record<string, string>;
+    params?: Record<string, string>;
+    fieldOverrides?: Record<string, string>;
+  }): Promise<JoomlaResponse> {
+    const typesResult = await this.listMenuItemTypes();
+    const types = (typesResult.data || []) as MenuItemType[];
+    const type = this.findMenuItemType(types, data.itemType);
+    if (!type) {
+      return { success: false, message: `Menu item type not found: ${data.itemType}` };
+    }
+
+    const newItemUrl = this.getAdminUrl("index.php?option=com_menus&task=item.add");
+    const { html } = await this.getPage(newItemUrl);
+    const token = this.extractCsrfToken(html);
+
+    if (!token) {
+      return { success: false, message: "Failed to extract CSRF token" };
+    }
+
+    const setTypeFormData: Record<string, string> = {
+      ...this.extractFormFields(html),
+      task: "item.setType",
+      fieldtype: "type",
+      "jform[type]": type.encoded,
+      "jform[menutype]": data.menuType,
+      [token.name]: token.value,
+    };
+    const typedPage = await this.postPage(newItemUrl, setTypeFormData);
+    const typedHtml = typedPage.html || html;
+    const typedToken = this.extractCsrfToken(typedHtml) || token;
+    const request = { ...type.request, ...(data.request || {}) };
+    const formData: Record<string, string> = {
+      ...this.extractFormFields(typedHtml),
+      task: "item.save",
+      "jform[title]": data.title,
+      "jform[alias]": data.alias || "",
+      "jform[menutype]": data.menuType,
+      "jform[type]": type.encoded,
+      "jform[link]": data.link || this.buildLinkFromRequest(request),
+      "jform[parent_id]": data.parentId || "1",
+      "jform[published]": data.published ?? "1",
+      "jform[access]": data.access || "1",
+      "jform[language]": data.language || "*",
+      "jform[browserNav]": data.browserNav || "0",
+      "jform[home]": data.home || "0",
+      "jform[note]": data.note || "",
+      [typedToken.name]: typedToken.value,
+    };
+
+    for (const [key, value] of Object.entries(request)) {
+      formData[`jform[request][${key}]`] = value;
+    }
+
+    for (const [key, value] of Object.entries(data.params || {})) {
+      formData[`jform[params][${key}]`] = value;
+    }
+
+    Object.assign(formData, data.fieldOverrides || {});
+
+    const result = await this.postPage(newItemUrl, formData);
+    const successMsg = /menu item saved|item saved|has been saved/i.test(result.html);
+    const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
+    let savedId = "";
+    if (successMsg) {
+      const itemsResult = await this.listMenuItems(data.menuType);
+      const items = Array.isArray(itemsResult.data) ? itemsResult.data as Array<Record<string, string>> : [];
+      const exactMatches = items.filter((item) => item.title === data.title);
+      savedId = exactMatches[exactMatches.length - 1]?.id || "";
+    }
+
+    return {
+      success: successMsg,
+      message: successMsg ? "Menu item saved" : (errorMsg ? errorMsg[1].trim() : "Unknown result"),
+      data: {
+        id: savedId,
+        title: data.title,
+        alias: data.alias || "",
+        menuType: data.menuType,
+        parentId: data.parentId || "1",
+        itemType: type.title || data.itemType,
+      },
+      html: result.html,
+    };
+  }
+
+  async updateMenuItem(
+    id: string,
+    data: {
+    title?: string;
+    itemType?: string;
+    alias?: string;
+    menuType?: string;
+    link?: string;
+      parentId?: string;
+      published?: string;
+      access?: string;
+      language?: string;
+      browserNav?: string;
+      home?: string;
+      note?: string;
+      request?: Record<string, string>;
+      params?: Record<string, string>;
+      fieldOverrides?: Record<string, string>;
+    }
+  ): Promise<JoomlaResponse> {
+    const editUrl = this.getAdminUrl(`index.php?option=com_menus&task=item.edit&id=${id}`);
+    const { html } = await this.getPage(editUrl);
+    const existing = this.parseMenuItemForm(html);
+    const token = this.extractCsrfToken(html);
+    let type = null as MenuItemType | null;
+
+    if (!token) {
+      return { success: false, message: "Failed to extract CSRF token" };
+    }
+
+    if (data.itemType) {
+      const typesResult = await this.listMenuItemTypes();
+      const types = (typesResult.data || []) as MenuItemType[];
+      type = this.findMenuItemType(types, data.itemType);
+      if (!type) {
+        return { success: false, message: `Menu item type not found: ${data.itemType}` };
+      }
+    }
+
+    const request = { ...((type?.request || existing.request) as Record<string, string>), ...(data.request || {}) };
+    const formData: Record<string, string> = {
+      ...this.extractFormFields(html),
+      task: "item.save",
+      "jform[title]": data.title ?? String(existing.title || ""),
+      "jform[alias]": data.alias ?? String(existing.alias || ""),
+      "jform[menutype]": data.menuType ?? String(existing.menuType || ""),
+      "jform[type]": type?.encoded ?? String(existing.type || ""),
+      "jform[link]": data.link ?? (type ? this.buildLinkFromRequest(request) : String(existing.link || this.buildLinkFromRequest(request))),
+      "jform[parent_id]": data.parentId ?? String(existing.parentId || "1"),
+      "jform[published]": data.published ?? String(existing.published || "1"),
+      "jform[access]": data.access ?? String(existing.access || "1"),
+      "jform[language]": data.language ?? String(existing.language || "*"),
+      "jform[browserNav]": data.browserNav ?? String(existing.browserNav || "0"),
+      "jform[home]": data.home ?? String(existing.home || "0"),
+      "jform[note]": data.note ?? String(existing.note || ""),
+      [token.name]: token.value,
+    };
+
+    for (const [key, value] of Object.entries(request)) {
+      formData[`jform[request][${key}]`] = value;
+    }
+
+    for (const [key, value] of Object.entries(data.params || {})) {
+      formData[`jform[params][${key}]`] = value;
+    }
+
+    Object.assign(formData, data.fieldOverrides || {});
+
+    const result = await this.postPage(editUrl, formData);
+    const successMsg = /menu item saved|item saved|has been saved/i.test(result.html);
+    const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
+
+    return {
+      success: successMsg,
+      message: successMsg ? "Menu item saved" : (errorMsg ? errorMsg[1].trim() : "Unknown result"),
+      html: result.html,
+    };
+  }
+
+  async deleteMenuItem(id: string): Promise<JoomlaResponse> {
+    const listUrl = this.getAdminUrl("index.php?option=com_menus&view=items");
+    const { html } = await this.getPage(listUrl);
+    const token = this.extractCsrfToken(html);
+
+    if (!token) {
+      return { success: false, message: "Failed to extract CSRF token" };
+    }
+
+    const formData: Record<string, string> = {
+      task: "items.trash",
+      "cid[]": id,
+      [token.name]: token.value,
+    };
+
+    const result = await this.postPage(listUrl, formData);
+    const successMsg = /menu item[s]?\s+(trashed|deleted)|item[s]?\s+(trashed|deleted)|has been (trashed|deleted)/i.test(result.html);
+    const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
+
+    return {
+      success: successMsg,
+      message: successMsg ? "Menu item trashed" : (errorMsg ? errorMsg[1].trim() : "Unknown result"),
+      html: result.html,
+    };
+  }
+
+  async toggleMenuItem(id: string, state: string, menuType?: string): Promise<JoomlaResponse> {
+    const listUrl = this.getMenuItemsListUrl(menuType);
+    const { html } = await this.getPage(listUrl);
+    const token = this.extractCsrfToken(html);
+
+    if (!token) {
+      return { success: false, message: "Failed to extract CSRF token" };
+    }
+
+    const task = state === "1" ? "items.publish" : "items.unpublish";
+    const result = await this.postPage(listUrl, {
+      task,
+      "cid[]": id,
+      boxchecked: "1",
+      [token.name]: token.value,
+    });
+    const successMsg = /item[s]?\s+(published|unpublished)|has been (published|unpublished)/i.test(result.html);
+    const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
+    const verify = await this.getMenuItem(id);
+    const item = (verify.data || {}) as Record<string, unknown>;
+    const actualState = String(item.published || "");
+    const verified = verify.success && actualState === state;
+
+    return {
+      success: verified,
+      message: verified
+        ? `Menu item ${state === "1" ? "published" : "unpublished"}`
+        : (errorMsg ? errorMsg[1].trim() : successMsg ? `Menu item state was not verified after ${task}` : "Unknown result"),
+      data: {
+        id,
+        requestedState: state,
+        actualState,
+        menuType: menuType || "",
+      },
+      html: result.html,
+    };
+  }
+
+  async checkInMenuItem(id: string, menuType?: string): Promise<JoomlaResponse> {
+    const listUrl = this.getMenuItemsListUrl(menuType);
+    const { html } = await this.getPage(listUrl);
+    const token = this.extractCsrfToken(html);
+
+    if (!token) {
+      return { success: false, message: "Failed to extract CSRF token" };
+    }
+
+    const result = await this.postPage(listUrl, {
+      task: "items.checkin",
+      "cid[]": id,
+      boxchecked: "1",
+      [token.name]: token.value,
+    });
+    const successMsg = /checked in|check-in|item[s]?\s+checked/i.test(result.html);
+    const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
+
+    return {
+      success: successMsg || !errorMsg,
+      message: successMsg ? "Menu item checked in" : (errorMsg ? errorMsg[1].trim() : "Menu item check-in submitted"),
+      html: result.html,
+    };
+  }
+
+  // ==================== UTILITIES ====================
+
+  async getPageContent(path: string): Promise<JoomlaResponse> {
+    const url = this.getAdminUrl(path);
+    const { html } = await this.getPage(url);
+    return {
+      success: true,
+      message: "Page retrieved",
+      html: html.substring(0, 50000),
+    };
+  }
+
+  private decodeHtml(html: string): string {
+    return this.decodeHtmlEntities(html)
+      .replace(/\\n/g, "\n")
+      .replace(/\\r/g, "\r")
+      .replace(/\\'/g, "'")
+      .replace(/\\"/g, '"');
+  }
+
+  private decodeHtmlEntities(html: string): string {
+    return html
+      .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) => String.fromCodePoint(parseInt(hex, 16)))
+      .replace(/&#(\d+);/g, (_, dec: string) => String.fromCodePoint(parseInt(dec, 10)))
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&#039;/g, "'")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&ndash;/g, "-");
+  }
+}

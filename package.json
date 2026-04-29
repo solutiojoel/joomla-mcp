@@ -1,0 +1,22 @@
+{
+  "name": "joomla-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for Joomla 3 backend management",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "tsx src/index.ts",
+    "dev": "tsx watch src/index.ts",
+    "smoke": "tsx smoke.ts",
+    "test:all-tools": "npm run build && tsx mcp-all-tools-test.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "dotenv": "^17.4.2"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3"
+  }
+}
