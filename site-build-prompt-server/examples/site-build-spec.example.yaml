@@ -1,0 +1,108 @@
+version: 1
+site:
+  siteName: St Example Parish
+  siteCode: SEP
+  siteUrl: https://new-site.example
+  adminBaseUrl: https://new-site.example/administrator
+  menuTitle: Main Menu SEP
+  menuType: main-menu-sep
+  notes: |
+    Build this site as a new parish site on the provided URL.
+    Do not rely on a static URL from .env; use the siteUrl in this spec.
+
+contentDefaults:
+  pageCategoryTitle: Page Content
+  homepageArticlesCategoryTitle: Homepage Articles
+  newsCategoryTitle: News
+  eventsCategoryTitle: Events
+
+menuItems:
+  - key: home
+    title: Home
+    alias: home
+    parentKey: null
+    home: true
+    pageType: homepage
+    content:
+      mode: auto_generate
+      guidance: |
+        Create a warm parish homepage intro with Mass times, welcome text, and current highlights.
+    artworkNotes: |
+      Hero art should feel welcoming, Catholic, and photo-driven.
+      Use soft gold accents and practical crop guidance for desktop and mobile.
+    modules:
+      - title: Hero Loader
+        source:
+          mode: module_blueprint
+          blueprintPath: blueprints/modules/hero-loader.yaml
+        position: hero
+        published: '1'
+  - key: about
+    title: About
+    alias: about
+    parentKey: null
+    pageType: article
+    content:
+      mode: pull_url
+      sourceUrl: https://old-site.example/about
+      cleanupNotes: Preserve ministry history and staff references.
+  - key: bulletin
+    title: Bulletin
+    alias: bulletin
+    parentKey: null
+    pageType: article
+    content:
+      mode: pull_backend_article
+      sourceArticleId: '272'
+      sourceSiteLabel: legacy parish backend
+
+moduleCatalog:
+  - title: Main Menu
+    source:
+      mode: module_blueprint
+      blueprintPath: blueprints/modules/module-main-menu.yaml
+    position: position-7
+    published: '1'
+  - title: Footer Contact
+    source:
+      mode: auto_generate
+      guidance: Render parish address, office hours, and contact info.
+    position: footer-a
+    published: '1'
+
+homepage:
+  sourceOutlineBlueprint: blueprints/home-outline-remap-test.yaml
+  artworkNotes: |
+    Homepage should feel modern but still parish-appropriate.
+    Keep hero, quicklinks, Mass times, news/events, and social sections visually distinct.
+  particles:
+    - section: top
+      particleType: contentarray
+      title: Alert
+      articleBinding:
+        mode: category
+        categoryTitle: Alerts
+        total: 10
+    - section: feature
+      particleType: contentarray
+      title: News & Events
+      articleBinding:
+        mode: category
+        categoryTitle: News
+        total: 6
+    - section: utility
+      particleType: contentarray
+      title: Calendar
+      articleBinding:
+        mode: explicit_article
+        articleTitle: Homepage Calendar Block
+        categoryTitle: Homepage Articles
+        createIfMissing: true
+        generationNotes: |
+          Summarize the parish calendar and upcoming events with a concise intro.
+    - section: footer
+      particleType: custom
+      title: Admin Footer
+      contentBinding:
+        mode: manual_html
+        html: <p>Replace with generated or curated footer copy.</p>

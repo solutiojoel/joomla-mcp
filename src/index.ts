@@ -218,6 +218,10 @@ const tools = [
           type: "string",
           description: "The article ID number",
         },
+        expectedTitle: {
+          type: "string",
+          description: "Optional safety check: refuse deletion unless the current article title matches this value",
+        },
       },
       required: ["id"],
     },
@@ -231,6 +235,10 @@ const tools = [
         id: {
           type: "string",
           description: "The article ID number",
+        },
+        expectedTitle: {
+          type: "string",
+          description: "Optional safety check: refuse check-in unless the current article title matches this value",
         },
       },
       required: ["id"],
@@ -346,6 +354,10 @@ const tools = [
           type: "string",
           description: "The category ID number",
         },
+        expectedTitle: {
+          type: "string",
+          description: "Optional safety check: refuse deletion unless the current category title matches this value",
+        },
       },
       required: ["id"],
     },
@@ -359,6 +371,10 @@ const tools = [
         id: {
           type: "string",
           description: "The category ID number",
+        },
+        expectedTitle: {
+          type: "string",
+          description: "Optional safety check: refuse check-in unless the current category title matches this value",
         },
       },
       required: ["id"],
@@ -654,6 +670,18 @@ const tools = [
           type: "string",
           description: "The module ID number",
         },
+        client_id: {
+          type: "string",
+          description: "Optional module client ID for verification: 0=site, 1=admin",
+        },
+        expectedTitle: {
+          type: "string",
+          description: "Optional safety check: refuse deletion unless the current module title matches this value",
+        },
+        expectedModuleType: {
+          type: "string",
+          description: "Optional safety check: refuse deletion unless the current module type matches this value",
+        },
       },
       required: ["id"],
     },
@@ -667,6 +695,14 @@ const tools = [
         id: {
           type: "string",
           description: "The module ID number",
+        },
+        expectedTitle: {
+          type: "string",
+          description: "Optional safety check: refuse check-in unless the current module title matches this value",
+        },
+        expectedModuleType: {
+          type: "string",
+          description: "Optional safety check: refuse check-in unless the current module type matches this value",
         },
       },
       required: ["id"],
@@ -686,6 +722,14 @@ const tools = [
           type: "string",
           description: "State: 1=enable, 0=disable",
           enum: ["0", "1"],
+        },
+        expectedTitle: {
+          type: "string",
+          description: "Optional safety check: refuse state change unless the current module title matches this value",
+        },
+        expectedModuleType: {
+          type: "string",
+          description: "Optional safety check: refuse state change unless the current module type matches this value",
         },
       },
       required: ["id", "state"],
@@ -845,6 +889,18 @@ const tools = [
           type: "string",
           description: "Menu item ID",
         },
+        menuType: {
+          type: "string",
+          description: "Optional menu type for post-delete verification, e.g. mainmenu",
+        },
+        expectedTitle: {
+          type: "string",
+          description: "Optional safety check: refuse deletion unless the current menu item title matches this value",
+        },
+        expectedMenuType: {
+          type: "string",
+          description: "Optional safety check: refuse deletion unless the current menu type matches this value",
+        },
       },
       required: ["id"],
     },
@@ -858,6 +914,8 @@ const tools = [
         id: { type: "string", description: "Menu item ID" },
         state: { type: "string", description: "State: 1=publish, 0=unpublish", enum: ["0", "1"] },
         menuType: { type: "string", description: "Optional menu type/menutype to scope the publish action" },
+        expectedTitle: { type: "string", description: "Optional safety check: refuse state change unless the current menu item title matches this value" },
+        expectedMenuType: { type: "string", description: "Optional safety check: refuse state change unless the current menu type matches this value" },
       },
       required: ["id", "state"],
     },
@@ -870,6 +928,8 @@ const tools = [
       properties: {
         id: { type: "string", description: "Menu item ID" },
         menuType: { type: "string", description: "Optional menu type/menutype to scope the check-in action" },
+        expectedTitle: { type: "string", description: "Optional safety check: refuse check-in unless the current menu item title matches this value" },
+        expectedMenuType: { type: "string", description: "Optional safety check: refuse check-in unless the current menu type matches this value" },
       },
       required: ["id"],
     },
@@ -1029,7 +1089,7 @@ const tools = [
       type: "object",
       properties: {
         outline: { type: "string", description: "Gantry outline ID. Defaults to default." },
-        root: { type: "array", description: "Full Gantry layout root array." },
+        root: {type: "array", items: { type: "object" }, description: "Full Gantry layout root array."},
         preset: { description: "Optional Gantry layout preset object returned by get_layout." },
         snapshotId: { type: "string", description: "Required for live save. Create with joomla_snapshot_target kind=gantryLayout first." },
         theme: { type: "string", description: "Optional Gantry theme key. Defaults to rt_studius." },
@@ -1101,6 +1161,48 @@ const tools = [
         theme: { type: "string", description: "Optional Gantry theme key. Defaults to rt_studius." },
       },
       required: ["kind"],
+    },
+  },
+  {
+    name: "joomla_export_module_blueprint",
+    description: "Export a Joomla module by ID to a reusable JSON or YAML blueprint for cloning on other sites.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Module ID to export." },
+        format: { type: "string", enum: ["json", "yaml"], description: "Export format. Defaults to yaml." },
+        saveToFile: { type: "boolean", description: "Save the exported blueprint under blueprints/modules in the workspace." },
+        fileName: { type: "string", description: "Optional filename for the saved blueprint." },
+      },
+      required: ["id"],
+    },
+  },
+  {
+    name: "joomla_import_module_blueprint",
+    description: "Create a new Joomla module from a JSON or YAML blueprint. Supports dry-run parsing before live creation.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        blueprint: { type: "object", additionalProperties: true, description: "Inline module blueprint object." },
+        blueprintText: { type: "string", description: "Inline JSON or YAML module blueprint text." },
+        format: { type: "string", enum: ["json", "yaml"], description: "Input format when using blueprintText." },
+        filePath: { type: "string", description: "Workspace-relative or absolute path to a saved module blueprint." },
+        title: { type: "string", description: "Optional override title for the created module." },
+        clientId: { type: "string", description: "Optional override client ID: 0=site, 1=admin." },
+        position: { type: "string", description: "Optional override position." },
+        published: { type: "string", description: "Optional override publish state." },
+        access: { type: "string", description: "Optional override access level." },
+        showtitle: { type: "string", description: "Optional override show title state." },
+        ordering: { type: "string", description: "Optional override ordering." },
+        style: { type: "string", description: "Optional override module style." },
+        language: { type: "string", description: "Optional override language." },
+        note: { type: "string", description: "Optional override admin note." },
+        assignment: { type: "string", description: "Optional override assignment mode." },
+        assigned: { type: "array", items: { type: "string" }, description: "Optional override selected menu assignments." },
+        dryRun: { type: "boolean", description: "Preview the parsed module payload without creating a module." },
+        confirm: { type: "boolean", description: "Required true for live create." },
+      },
+      required: [],
     },
   },
   {
@@ -1465,7 +1567,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request: { params: { name
         const id = args?.id as string;
         if (!id) return { content: [{ type: "text", text: "Error: id is required" }], isError: true };
 
-        const result = await joomla.deleteArticle(id);
+        const result = await joomla.deleteArticle(id, {
+          expectedTitle: args?.expectedTitle as string,
+        });
         return {
           content: [{ type: "text", text: formatResult(result) }],
           isError: !result.success,
@@ -1479,7 +1583,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request: { params: { name
         const id = args?.id as string;
         if (!id) return { content: [{ type: "text", text: "Error: id is required" }], isError: true };
 
-        const result = await joomla.checkInArticle(id);
+        const result = await joomla.checkInArticle(id, {
+          expectedTitle: args?.expectedTitle as string,
+        });
         return {
           content: [{ type: "text", text: formatResult(result) }],
           isError: !result.success,
@@ -1559,7 +1665,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request: { params: { name
         const id = args?.id as string;
         if (!id) return { content: [{ type: "text", text: "Error: id is required" }], isError: true };
 
-        const result = await joomla.deleteCategory(id);
+        const result = await joomla.deleteCategory(id, {
+          expectedTitle: args?.expectedTitle as string,
+        });
         return {
           content: [{ type: "text", text: formatResult(result) }],
           isError: !result.success,
@@ -1573,7 +1681,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request: { params: { name
         const id = args?.id as string;
         if (!id) return { content: [{ type: "text", text: "Error: id is required" }], isError: true };
 
-        const result = await joomla.checkInCategory(id);
+        const result = await joomla.checkInCategory(id, {
+          expectedTitle: args?.expectedTitle as string,
+        });
         return {
           content: [{ type: "text", text: formatResult(result) }],
           isError: !result.success,
@@ -1744,6 +1854,54 @@ server.setRequestHandler(CallToolRequestSchema, async (request: { params: { name
         };
       }
 
+      case "joomla_export_module_blueprint": {
+        const login = await ensureLoggedIn();
+        if (!login.success) return { content: [{ type: "text", text: formatResult(login) }], isError: true };
+
+        const id = args?.id as string;
+        if (!id) return { content: [{ type: "text", text: "Error: id is required" }], isError: true };
+
+        const result = await joomla.exportModuleBlueprint(id, {
+          format: args?.format as "json" | "yaml",
+          saveToFile: args?.saveToFile as boolean,
+          fileName: args?.fileName as string,
+        });
+        return {
+          content: [{ type: "text", text: formatResult(result) }],
+          isError: !result.success,
+        };
+      }
+
+      case "joomla_import_module_blueprint": {
+        const login = await ensureLoggedIn();
+        if (!login.success) return { content: [{ type: "text", text: formatResult(login) }], isError: true };
+
+        const result = await joomla.importModuleBlueprint({
+          blueprint: args?.blueprint as Record<string, unknown>,
+          blueprintText: args?.blueprintText as string,
+          format: args?.format as "json" | "yaml",
+          filePath: args?.filePath as string,
+          title: args?.title as string,
+          clientId: args?.clientId as string,
+          position: args?.position as string,
+          published: args?.published as string,
+          access: args?.access as string,
+          showtitle: args?.showtitle as string,
+          ordering: args?.ordering as string,
+          style: args?.style as string,
+          language: args?.language as string,
+          note: args?.note as string,
+          assignment: args?.assignment as string,
+          assigned: args?.assigned as string[],
+          dryRun: args?.dryRun as boolean,
+          confirm: args?.confirm as boolean,
+        });
+        return {
+          content: [{ type: "text", text: formatResult(result) }],
+          isError: !result.success,
+        };
+      }
+
       case "joomla_update_module": {
         const login = await ensureLoggedIn();
         if (!login.success) return { content: [{ type: "text", text: formatResult(login) }], isError: true };
@@ -1814,7 +1972,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request: { params: { name
         const id = args?.id as string;
         if (!id) return { content: [{ type: "text", text: "Error: id is required" }], isError: true };
 
-        const result = await joomla.deleteModule(id);
+        const result = await joomla.deleteModule(id, {
+          clientId: args?.client_id as string,
+          expectedTitle: args?.expectedTitle as string,
+          expectedModuleType: args?.expectedModuleType as string,
+        });
         return {
           content: [{ type: "text", text: formatResult(result) }],
           isError: !result.success,
@@ -1828,7 +1990,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request: { params: { name
         const id = args?.id as string;
         if (!id) return { content: [{ type: "text", text: "Error: id is required" }], isError: true };
 
-        const result = await joomla.checkInModule(id);
+        const result = await joomla.checkInModule(id, {
+          expectedTitle: args?.expectedTitle as string,
+          expectedModuleType: args?.expectedModuleType as string,
+        });
         return {
           content: [{ type: "text", text: formatResult(result) }],
           isError: !result.success,
@@ -1844,7 +2009,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request: { params: { name
         if (!id || !state)
           return { content: [{ type: "text", text: "Error: id and state are required" }], isError: true };
 
-        const result = await joomla.toggleModule(id, state);
+        const result = await joomla.toggleModule(id, state, {
+          expectedTitle: args?.expectedTitle as string,
+          expectedModuleType: args?.expectedModuleType as string,
+        });
         return {
           content: [{ type: "text", text: formatResult(result) }],
           isError: !result.success,
@@ -2004,7 +2172,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request: { params: { name
         const id = args?.id as string;
         if (!id) return { content: [{ type: "text", text: "Error: id is required" }], isError: true };
 
-        const result = await joomla.deleteMenuItem(id);
+        const result = await joomla.deleteMenuItem(id, {
+          menuType: args?.menuType as string,
+          expectedTitle: args?.expectedTitle as string,
+          expectedMenuType: args?.expectedMenuType as string,
+        });
         return {
           content: [{ type: "text", text: formatResult(result) }],
           isError: !result.success,
@@ -2019,7 +2191,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request: { params: { name
         const state = args?.state as string;
         if (!id || !state) return { content: [{ type: "text", text: "Error: id and state are required" }], isError: true };
 
-        const result = await joomla.toggleMenuItem(id, state, args?.menuType as string);
+        const result = await joomla.toggleMenuItem(id, state, args?.menuType as string, {
+          expectedTitle: args?.expectedTitle as string,
+          expectedMenuType: args?.expectedMenuType as string,
+        });
         return {
           content: [{ type: "text", text: formatResult(result) }],
           isError: !result.success,
@@ -2033,7 +2208,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request: { params: { name
         const id = args?.id as string;
         if (!id) return { content: [{ type: "text", text: "Error: id is required" }], isError: true };
 
-        const result = await joomla.checkInMenuItem(id, args?.menuType as string);
+        const result = await joomla.checkInMenuItem(id, args?.menuType as string, {
+          expectedTitle: args?.expectedTitle as string,
+          expectedMenuType: args?.expectedMenuType as string,
+        });
         return {
           content: [{ type: "text", text: formatResult(result) }],
           isError: !result.success,
@@ -2127,6 +2305,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: { params: { name
           theme: args?.theme as string,
           replaceAttributes: args?.replaceAttributes as boolean,
           dryRun: args?.dryRun as boolean,
+          snapshotId: args?.snapshotId as string,
         });
         return {
           content: [{ type: "text", text: formatResult(result) }],
@@ -2152,6 +2331,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: { params: { name
           theme: args?.theme as string,
           replaceAttributes: args?.replaceAttributes as boolean,
           dryRun: args?.dryRun as boolean,
+          snapshotId: args?.snapshotId as string,
         });
         return {
           content: [{ type: "text", text: formatResult(result) }],
@@ -2174,6 +2354,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: { params: { name
         const result = await joomla.saveGantry5LayoutRaw((args?.outline as string) || "default", {
           root,
           preset: args?.preset,
+          snapshotId: args?.snapshotId as string,
           theme: args?.theme as string,
         });
         return {
@@ -2404,6 +2585,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: { params: { name
         const result = await joomla.moveGantry5LayoutNode((args?.outline as string) || "default", nodeId, targetParentId, {
           theme: args?.theme as string,
           dryRun: args?.dryRun as boolean,
+          snapshotId: args?.snapshotId as string,
         });
         return { content: [{ type: "text", text: formatResult(result) }], isError: !result.success };
       }
@@ -2422,6 +2604,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: { params: { name
           particleId: args?.particleId as string,
           theme: args?.theme as string,
           dryRun: args?.dryRun as boolean,
+          snapshotId: args?.snapshotId as string,
         });
         return { content: [{ type: "text", text: formatResult(result) }], isError: !result.success };
       }
@@ -2436,6 +2619,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: { params: { name
         const result = await joomla.deleteGantry5LayoutNode((args?.outline as string) || "default", nodeId, {
           theme: args?.theme as string,
           dryRun: args?.dryRun as boolean,
+          snapshotId: args?.snapshotId as string,
         });
         return { content: [{ type: "text", text: formatResult(result) }], isError: !result.success };
       }

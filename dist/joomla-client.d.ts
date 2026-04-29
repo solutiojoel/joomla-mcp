@@ -101,6 +101,12 @@ export declare class JoomlaClient {
         homeCategory?: string;
     }): Promise<JoomlaResponse>;
     private findCategoryByTitle;
+    private ensureCategoryByTitle;
+    private findArticleByTitle;
+    private parseIdList;
+    private stringifyIdList;
+    private collectGantryParticleReferences;
+    private remapGantryParticleReferences;
     applySiteBuild(data: {
         plan?: Record<string, unknown>;
         siteCode?: string;
@@ -166,8 +172,12 @@ export declare class JoomlaClient {
         state?: string;
         access?: string;
     }): Promise<JoomlaResponse>;
-    deleteArticle(id: string): Promise<JoomlaResponse>;
-    checkInArticle(id: string): Promise<JoomlaResponse>;
+    deleteArticle(id: string, options?: {
+        expectedTitle?: string;
+    }): Promise<JoomlaResponse>;
+    checkInArticle(id: string, options?: {
+        expectedTitle?: string;
+    }): Promise<JoomlaResponse>;
     listCategories(extension?: string): Promise<JoomlaResponse>;
     private parseCategoryList;
     getCategory(id: string): Promise<JoomlaResponse>;
@@ -187,18 +197,50 @@ export declare class JoomlaClient {
         published?: string;
     }): Promise<JoomlaResponse>;
     private parseCategoryForm;
-    deleteCategory(id: string): Promise<JoomlaResponse>;
-    checkInCategory(id: string): Promise<JoomlaResponse>;
+    deleteCategory(id: string, options?: {
+        expectedTitle?: string;
+    }): Promise<JoomlaResponse>;
+    checkInCategory(id: string, options?: {
+        expectedTitle?: string;
+    }): Promise<JoomlaResponse>;
     listModules(clientId?: string): Promise<JoomlaResponse>;
     private parseModuleList;
     private parseModuleTypes;
     private findModuleType;
+    private resolveModuleType;
     private parseModuleForm;
+    private sanitizeBlueprintFileName;
+    private omitModuleBlueprintFields;
     private parseModuleFieldCatalog;
     listModuleTypes(clientId?: string): Promise<JoomlaResponse>;
     listModulePositions(clientId?: string): Promise<JoomlaResponse>;
     inspectModuleType(moduleType: string, clientId?: string): Promise<JoomlaResponse>;
     getModule(id: string): Promise<JoomlaResponse>;
+    exportModuleBlueprint(id: string, options?: {
+        format?: "json" | "yaml";
+        saveToFile?: boolean;
+        fileName?: string;
+    }): Promise<JoomlaResponse>;
+    importModuleBlueprint(data: {
+        blueprint?: Record<string, unknown>;
+        blueprintText?: string;
+        format?: "json" | "yaml";
+        filePath?: string;
+        title?: string;
+        clientId?: string;
+        position?: string;
+        published?: string;
+        access?: string;
+        showtitle?: string;
+        ordering?: string;
+        style?: string;
+        language?: string;
+        note?: string;
+        assignment?: string;
+        assigned?: string[];
+        dryRun?: boolean;
+        confirm?: boolean;
+    }): Promise<JoomlaResponse>;
     updateModule(id: string, data: {
         title?: string;
         position?: string;
@@ -234,8 +276,15 @@ export declare class JoomlaClient {
         content?: string;
         fieldOverrides?: Record<string, string>;
     }): Promise<JoomlaResponse>;
-    deleteModule(id: string): Promise<JoomlaResponse>;
-    checkInModule(id: string): Promise<JoomlaResponse>;
+    deleteModule(id: string, options?: {
+        clientId?: string;
+        expectedTitle?: string;
+        expectedModuleType?: string;
+    }): Promise<JoomlaResponse>;
+    checkInModule(id: string, options?: {
+        expectedTitle?: string;
+        expectedModuleType?: string;
+    }): Promise<JoomlaResponse>;
     private normalizeGantryParticleType;
     private findGantryParticleGuide;
     private deepMergeGantryOptions;
@@ -287,13 +336,17 @@ export declare class JoomlaClient {
         fieldOverrides?: Record<string, string>;
     }): Promise<JoomlaResponse>;
     private getGantryThemeKey;
+    private getGantryThemesUrl;
     private getGantryOutlineTabUrl;
+    private parseGantryThemeConfigureUrl;
+    private getGantryOutlinePage;
     private parseJsonAttribute;
     private parseGantryAjaxVars;
     private parseGantryOutlines;
     private parseGantryTabs;
     private parseGantryParticleCatalog;
     private parseGantryLayoutRoot;
+    private validateGantrySnapshot;
     private summarizeGantryLayout;
     private findGantryLayoutNode;
     private gantryNodeContains;
@@ -335,17 +388,20 @@ export declare class JoomlaClient {
     saveGantry5LayoutRaw(outline: string | undefined, data: {
         root: unknown;
         preset?: unknown;
+        snapshotId?: string;
         theme?: string;
     }): Promise<JoomlaResponse>;
     updateGantry5ParticleInstance(outline: string | undefined, particleId: string, attributes: Record<string, unknown>, options?: {
         theme?: string;
         replaceAttributes?: boolean;
         dryRun?: boolean;
+        snapshotId?: string;
     }): Promise<JoomlaResponse>;
     updateGantry5LayoutNodeAttributes(outline: string | undefined, nodeId: string, attributes: Record<string, unknown>, options?: {
         theme?: string;
         replaceAttributes?: boolean;
         dryRun?: boolean;
+        snapshotId?: string;
     }): Promise<JoomlaResponse>;
     diffGantry5Layout(data: {
         outline?: string;
@@ -357,6 +413,7 @@ export declare class JoomlaClient {
     moveGantry5LayoutNode(outline: string | undefined, nodeId: string, targetParentId: string, options?: {
         theme?: string;
         dryRun?: boolean;
+        snapshotId?: string;
     }): Promise<JoomlaResponse>;
     addGantry5ParticleInstance(outline: string | undefined, targetParentId: string, particleType: string, data?: {
         title?: string;
@@ -364,12 +421,17 @@ export declare class JoomlaClient {
         particleId?: string;
         theme?: string;
         dryRun?: boolean;
+        snapshotId?: string;
     }): Promise<JoomlaResponse>;
     deleteGantry5LayoutNode(outline: string | undefined, nodeId: string, options?: {
         theme?: string;
         dryRun?: boolean;
+        snapshotId?: string;
     }): Promise<JoomlaResponse>;
-    toggleModule(id: string, state: string): Promise<JoomlaResponse>;
+    toggleModule(id: string, state: string, options?: {
+        expectedTitle?: string;
+        expectedModuleType?: string;
+    }): Promise<JoomlaResponse>;
     listMenus(): Promise<JoomlaResponse>;
     createMenu(data: {
         title: string;
@@ -415,9 +477,19 @@ export declare class JoomlaClient {
         params?: Record<string, string>;
         fieldOverrides?: Record<string, string>;
     }): Promise<JoomlaResponse>;
-    deleteMenuItem(id: string): Promise<JoomlaResponse>;
-    toggleMenuItem(id: string, state: string, menuType?: string): Promise<JoomlaResponse>;
-    checkInMenuItem(id: string, menuType?: string): Promise<JoomlaResponse>;
+    deleteMenuItem(id: string, options?: {
+        expectedTitle?: string;
+        expectedMenuType?: string;
+        menuType?: string;
+    }): Promise<JoomlaResponse>;
+    toggleMenuItem(id: string, state: string, menuType?: string, options?: {
+        expectedTitle?: string;
+        expectedMenuType?: string;
+    }): Promise<JoomlaResponse>;
+    checkInMenuItem(id: string, menuType?: string, options?: {
+        expectedTitle?: string;
+        expectedMenuType?: string;
+    }): Promise<JoomlaResponse>;
     getPageContent(path: string): Promise<JoomlaResponse>;
     private decodeHtml;
     private decodeHtmlEntities;
