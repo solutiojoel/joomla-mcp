@@ -40,6 +40,12 @@ export declare class JoomlaClient {
     private parseMenuItemTypePayload;
     private buildLinkFromRequest;
     private buildArticleText;
+    private normalizeRichText;
+    private isEquivalentRichText;
+    private verifyAlias;
+    private shouldVerifyAssignedMembers;
+    private isDeletionVerified;
+    private isCheckInVerified;
     private splitArticleText;
     private getMenuItemsListUrl;
     private parseMenuItemTypes;
@@ -65,6 +71,9 @@ export declare class JoomlaClient {
     private parseToolbarTasks;
     private parseAdminTableRows;
     private inferRestoreTask;
+    private getStableFormIdentity;
+    private getRestorableVerificationFields;
+    private matchesVerificationField;
     backendInventory(): Promise<JoomlaResponse>;
     inspectAdminForm(pathOrUrl: string, formId?: string): Promise<JoomlaResponse>;
     inspectAdminList(pathOrUrl: string, formId?: string): Promise<JoomlaResponse>;
@@ -74,6 +83,9 @@ export declare class JoomlaClient {
         task?: string;
         dryRun?: boolean;
         confirm?: boolean;
+        expectedAction?: string;
+        expectedIdentity?: Record<string, string>;
+        verifyFields?: Record<string, string>;
     }): Promise<JoomlaResponse>;
     snapshotTarget(data: {
         kind: string;

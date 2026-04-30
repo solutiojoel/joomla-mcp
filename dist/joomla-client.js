@@ -456,6 +456,37 @@ class JoomlaClient {
             return introtext;
         return `${introtext}<hr id="system-readmore" />${fulltext}`;
     }
+    normalizeRichText(value) {
+        return this.decodeHtmlEntities(String(value || ""))
+            .replace(/\r\n?/g, "\n")
+            .replace(/<hr\b[^>]*\bid=["']system-readmore["'][^>]*\/?>/gi, '<hr id="system-readmore" />')
+            .replace(/>\s+</g, "><")
+            .replace(/\s+/g, " ")
+            .trim();
+    }
+    isEquivalentRichText(actual, expected) {
+        return this.normalizeRichText(actual) === this.normalizeRichText(expected);
+    }
+    verifyAlias(actual, requested) {
+        if (requested && requested.trim()) {
+            return actual === requested;
+        }
+        return actual.trim().length > 0;
+    }
+    shouldVerifyAssignedMembers(assignment) {
+        return assignment === "1" || assignment === "-1";
+    }
+    isDeletionVerified(stillListed, verify, stateFieldNames) {
+        if (stillListed)
+            return false;
+        if (!verify.success)
+            return true;
+        const record = (verify.data || {});
+        return stateFieldNames.some((fieldName) => String(record[fieldName] || "") === "-2");
+    }
+    isCheckInVerified(successMsg, verify, checkedOutCleared) {
+        return verify.success && (checkedOutCleared || successMsg);
+    }
     splitArticleText(articletext) {
         const readmore = /<hr\b[^>]*\bid=["']system-readmore["'][^>]*>/i;
         const parts = articletext.split(readmore);
@@ -647,9 +678,10 @@ class JoomlaClient {
         (0, node_fs_1.mkdirSync)(this.getSnapshotDir(), { recursive: true });
         const id = `${new Date().toISOString().replace(/[:.]/g, "-")}-${String(data.kind || "snapshot")}-${(0, node_crypto_1.randomUUID)().slice(0, 8)}`;
         const snapshot = {
-            id,
-            createdAt: new Date().toISOString(),
             ...data,
+            id,
+            snapshotId: id,
+            createdAt: new Date().toISOString(),
         };
         const filePath = this.getSnapshotPath(id);
         (0, node_fs_1.writeFileSync)(filePath, JSON.stringify(snapshot, null, 2), "utf8");
@@ -830,6 +862,73 @@ class JoomlaClient {
             return "menu.save";
         return "";
     }
+    getStableFormIdentity(values) {
+        const identityKeys = [
+            "id",
+            "jform[id]",
+            "jform[module]",
+            "jform[client_id]",
+            "jform[menutype]",
+            "jform[type]",
+            "jform[extension]",
+            "jform[catid]",
+            "jform[parent_id]",
+            "option",
+            "view",
+            "layout",
+        ];
+        const identity = {};
+        for (const key of identityKeys) {
+            if (typeof values[key] === "string" && values[key] !== "") {
+                identity[key] = values[key];
+            }
+        }
+        return identity;
+    }
+    getRestorableVerificationFields(values) {
+        const allowedExactKeys = new Set([
+            "jform[title]",
+            "jform[alias]",
+            "jform[note]",
+            "jform[articletext]",
+            "jform[description]",
+            "jform[content]",
+            "jform[catid]",
+            "jform[parent_id]",
+            "jform[state]",
+            "jform[published]",
+            "jform[access]",
+            "jform[language]",
+            "jform[module]",
+            "jform[client_id]",
+            "jform[position]",
+            "jform[showtitle]",
+            "jform[ordering]",
+            "jform[style]",
+            "jform[assignment]",
+            "jform[menutype]",
+            "jform[type]",
+            "jform[link]",
+            "jform[browserNav]",
+            "jform[home]",
+            "jform[publish_up]",
+            "jform[publish_down]",
+        ]);
+        const allowedPrefixes = ["jform[request][", "jform[params][", "jform[advanced]["];
+        const result = {};
+        for (const [key, value] of Object.entries(values || {})) {
+            if (!allowedExactKeys.has(key) && !allowedPrefixes.some((prefix) => key.startsWith(prefix)))
+                continue;
+            result[key] = value;
+        }
+        return result;
+    }
+    matchesVerificationField(key, actualValue, expectedValue) {
+        if (key === "jform[articletext]" || key === "jform[description]" || key === "jform[content]") {
+            return this.isEquivalentRichText(actualValue, expectedValue);
+        }
+        return String(actualValue || "") === String(expectedValue || "");
+    }
     // ==================== BACKEND DISCOVERY / SAFETY ====================
     async backendInventory() {
         const { html } = await this.getPage(this.getAdminUrl("index.php"));
@@ -911,6 +1010,35 @@ class JoomlaClient {
         if (!form)
             return { success: false, message: "No matching form found" };
         const fields = (form.values || {});
+        const action = this.formActionToUrl(String(form.action || ""), url);
+        const currentIdentity = this.getStableFormIdentity(fields);
+        if (data.expectedAction && action !== this.resolveUrl(data.expectedAction)) {
+            return {
+                success: false,
+                message: `Refusing to submit form because the current action no longer matches the snapshot target`,
+                data: {
+                    path: pathOrUrl,
+                    expectedAction: this.resolveUrl(data.expectedAction),
+                    actualAction: action,
+                },
+            };
+        }
+        if (data.expectedIdentity) {
+            for (const [key, expectedValue] of Object.entries(data.expectedIdentity)) {
+                if (String(currentIdentity[key] || "") !== String(expectedValue || "")) {
+                    return {
+                        success: false,
+                        message: `Refusing to submit form because the current target no longer matches the snapshot identity`,
+                        data: {
+                            path: pathOrUrl,
+                            key,
+                            expectedValue,
+                            actualValue: String(currentIdentity[key] || ""),
+                        },
+                    };
+                }
+            }
+        }
         const payload = {
             ...fields,
             ...(data.overrides || {}),
@@ -921,12 +1049,11 @@ class JoomlaClient {
             payload[token.name] = token.value;
         else if (this.tokenName)
             payload[this.tokenName] = "1";
-        const action = this.formActionToUrl(String(form.action || ""), url);
         if (data.dryRun || !data.confirm) {
             return {
                 success: true,
                 message: data.dryRun ? "Dry run: form payload prepared" : "Form payload prepared; set confirm=true to submit",
-                data: { path: pathOrUrl, action, method: form.method, payload },
+                data: { path: pathOrUrl, action, method: form.method, payload, expectedIdentity: data.expectedIdentity || null },
             };
         }
         const result = await this.request(action, {
@@ -934,11 +1061,28 @@ class JoomlaClient {
             body: this.getFormUrlEncoded(payload),
             contentType: "application/x-www-form-urlencoded",
         });
-        const success = /saved|success|updated|created|published|unpublished/i.test(result.body) && !/alert-error|alert-danger/i.test(result.body);
+        const successMsg = /saved|success|updated|created|published|unpublished/i.test(result.body) && !/alert-error|alert-danger/i.test(result.body);
+        const verify = await this.inspectAdminForm(pathOrUrl, data.formId);
+        const verifyData = (verify.data || {});
+        const verifyForms = (verifyData.forms || []);
+        const verifyForm = verifyForms[0];
+        const verifyValues = (verifyForm?.values || {});
+        const verification = {
+            attempted: true,
+            readbackSucceeded: verify.success && !!verifyForm,
+            fieldsMatched: !!verifyForm && Object.entries(data.verifyFields || {}).every(([key, expectedValue]) => this.matchesVerificationField(key, String(verifyValues[key] || ""), String(expectedValue || ""))),
+            successMsg,
+        };
+        const success = verification.readbackSucceeded && verification.fieldsMatched;
         return {
             success,
-            message: success ? "Form submitted" : "Form submitted; verify result",
-            data: { status: result.status, action, task: payload.task || "" },
+            message: success ? "Form submitted" : successMsg ? "Form submitted, but readback verification failed" : "Form submitted; verify result",
+            data: {
+                status: result.status,
+                action,
+                task: payload.task || "",
+                verification,
+            },
             html: result.body.substring(0, 50000),
         };
     }
@@ -965,7 +1109,7 @@ class JoomlaClient {
             const inspected = await this.inspectAdminForm(targetPath, data.formId);
             snapshotData = {
                 kind,
-                id: data.id || "",
+                targetId: data.id || "",
                 path: targetPath,
                 formId: data.formId || "",
                 restoreTask: this.inferRestoreTask(kind, targetPath),
@@ -976,7 +1120,10 @@ class JoomlaClient {
         return {
             success: true,
             message: "Snapshot saved",
-            data: snapshot,
+            data: {
+                ...snapshot,
+                snapshotId: String(snapshot.id || ""),
+            },
         };
     }
     async restoreSnapshot(snapshotId, options = {}) {
@@ -1004,11 +1151,15 @@ class JoomlaClient {
         const form = forms[0];
         if (!form)
             return { success: false, message: "Snapshot does not contain a restorable form" };
+        const snapshotValues = (form.values || {});
         return this.submitAdminForm(String(snapshot.path || ""), {
             formId: String(snapshot.formId || form.id || ""),
-            overrides: form.values,
+            overrides: snapshotValues,
             task: options.task || String(snapshot.restoreTask || ""),
             confirm: true,
+            expectedAction: String(form.action || ""),
+            expectedIdentity: this.getStableFormIdentity(snapshotValues),
+            verifyFields: this.getRestorableVerificationFields(snapshotValues),
         });
     }
     slugify(value) {
@@ -1495,15 +1646,48 @@ class JoomlaClient {
     async createMediaFolder(data) {
         if (!data.folderName)
             return { success: false, message: "folderName is required" };
-        return this.submitAdminForm(data.path || "index.php?option=com_media", {
+        const path = data.path || "index.php?option=com_media";
+        if (data.dryRun || !data.confirm) {
+            return this.submitAdminForm(path, {
+                overrides: {
+                    foldername: data.folderName,
+                    folderbase: data.folderBase || "",
+                },
+                task: "folder.create",
+                dryRun: data.dryRun ?? !data.confirm,
+                confirm: data.confirm,
+            });
+        }
+        const submitted = await this.submitAdminForm(path, {
             overrides: {
                 foldername: data.folderName,
                 folderbase: data.folderBase || "",
             },
             task: "folder.create",
-            dryRun: data.dryRun ?? !data.confirm,
-            confirm: data.confirm,
+            confirm: true,
         });
+        if (!submitted.success)
+            return submitted;
+        const listing = await this.mediaList(data.folderBase || "index.php?option=com_media");
+        const listingData = (listing.data || {});
+        const links = (listingData.links || []);
+        const folderMatch = links.some((link) => String(link.label || "") === data.folderName
+            || decodeURIComponent(String(link.href || "")).includes(`/${data.folderName}`)
+            || decodeURIComponent(String(link.href || "")).includes(`folder=${data.folderName}`)) || (listing.html || "").includes(data.folderName);
+        return {
+            success: folderMatch,
+            message: folderMatch ? "Media folder created" : "Media folder create submitted, but the new folder was not verified in the media listing",
+            data: {
+                ...(submitted.data || {}),
+                folderName: data.folderName,
+                folderBase: data.folderBase || "",
+                verification: {
+                    attempted: true,
+                    listedAfterCreate: folderMatch,
+                },
+            },
+            html: submitted.html,
+        };
     }
     async listSponsors() {
         return this.inspectAdminList("index.php?option=com_sponsors&view=sponsors");
@@ -1616,6 +1800,7 @@ class JoomlaClient {
                     title,
                     state: this.extractPublishedState(row),
                     category: catMatch ? this.stripHtml(catMatch[1]) : "Unknown",
+                    checkedOut: /checked[-_ ]?out|icon-lock|fa-lock/i.test(row) ? "1" : "0",
                 });
             }
         }
@@ -1684,11 +1869,11 @@ class JoomlaClient {
             foundInList: !!createdId,
             readbackSucceeded: !!verify?.success,
             titleMatches: !!verify?.success && article.title === data.title,
-            aliasMatches: !!verify?.success && article.alias === String(data.alias || ""),
+            aliasMatches: !!verify?.success && this.verifyAlias(String(article.alias || ""), data.alias),
             categoryMatches: !!verify?.success && article.categoryId === data.categoryId,
             stateMatches: !!verify?.success && article.state === String(data.state ?? "1"),
             accessMatches: !!verify?.success && article.access === String(data.access ?? "1"),
-            articleTextMatches: !!verify?.success && article.articletext === expectedArticleText,
+            articleTextMatches: !!verify?.success && this.isEquivalentRichText(String(article.articletext || ""), expectedArticleText),
         };
         const verified = Object.values(verification).every((value) => value === true);
         return {
@@ -1743,7 +1928,7 @@ class JoomlaClient {
             titleMatches: verify.success && article.title === expectedTitle,
             aliasMatches: verify.success && article.alias === expectedAlias,
             categoryMatches: verify.success && article.categoryId === expectedCategoryId,
-            articleTextMatches: verify.success && article.articletext === expectedArticleText,
+            articleTextMatches: verify.success && this.isEquivalentRichText(String(article.articletext || ""), expectedArticleText),
             stateMatches: verify.success && article.state === expectedState,
             accessMatches: verify.success && article.access === expectedAccess,
         };
@@ -1790,7 +1975,7 @@ class JoomlaClient {
         const articles = Array.isArray(listResult.data) ? listResult.data : [];
         const stillListed = articles.some((entry) => entry.id === id);
         const verify = await this.getArticle(id);
-        const verified = !stillListed && !verify.success;
+        const verified = !stillListed && (successMsg || this.isDeletionVerified(stillListed, verify, ["published", "state"]));
         return {
             success: verified,
             message: verified ? "Article trashed" : (errorMsg ? errorMsg[1].trim() : successMsg ? "Article trash submitted, but deletion was not verified" : "Unknown result"),
@@ -1834,10 +2019,14 @@ class JoomlaClient {
         const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
         const verify = await this.getArticle(id);
         const article = (verify.data || {});
-        const ok = (successMsg || !errorMsg) && verify.success;
+        const listed = await this.listArticles();
+        const listedArticles = (listed.data || []);
+        const listedArticle = listedArticles.find((entry) => entry.id === id);
+        const checkedOutCleared = !!listedArticle && listedArticle.checkedOut !== "1";
+        const ok = this.isCheckInVerified(successMsg, verify, checkedOutCleared);
         return {
             success: ok,
-            message: ok ? "Article checked in" : (errorMsg ? errorMsg[1].trim() : "Article check-in submitted"),
+            message: ok ? "Article checked in" : (errorMsg ? errorMsg[1].trim() : successMsg ? "Article check-in submitted, but checkout state was not verified as cleared" : "Article check-in submitted"),
             data: this.buildOperationData("article", id, {
                 title: String(article.title || title),
                 state: String(article.state || ""),
@@ -1845,6 +2034,8 @@ class JoomlaClient {
                     attempted: true,
                     preflightVerified: true,
                     existsAfterCheckIn: verify.success,
+                    listedAfterCheckIn: !!listedArticle,
+                    checkedOutCleared,
                 },
             }),
             html: result.html,
@@ -1877,6 +2068,7 @@ class JoomlaClient {
                         title,
                         state: this.extractPublishedState(row),
                         parent: "Root",
+                        checkedOut: /checked[-_ ]?out|icon-lock|fa-lock/i.test(row) ? "1" : "0",
                     });
                 }
             }
@@ -1935,9 +2127,9 @@ class JoomlaClient {
             foundInList: !!createdId,
             readbackSucceeded: !!verify?.success,
             titleMatches: !!verify?.success && category.title === data.title,
-            aliasMatches: !!verify?.success && category.alias === String(data.alias || ""),
+            aliasMatches: !!verify?.success && this.verifyAlias(String(category.alias || ""), data.alias),
             parentMatches: !!verify?.success && category.parentId === String(data.parentId || "1"),
-            descriptionMatches: !!verify?.success && category.description === String(data.description || ""),
+            descriptionMatches: !!verify?.success && this.isEquivalentRichText(String(category.description || ""), String(data.description || "")),
             publishedMatches: !!verify?.success && category.published === String(data.published ?? "1"),
         };
         const verified = Object.values(verification).every((value) => value === true);
@@ -1985,7 +2177,7 @@ class JoomlaClient {
             titleMatches: verify.success && category.title === String(formData["jform[title]"] || ""),
             aliasMatches: verify.success && category.alias === String(formData["jform[alias]"] || ""),
             parentMatches: verify.success && category.parentId === String(formData["jform[parent_id]"] || ""),
-            descriptionMatches: verify.success && category.description === String(formData["jform[description]"] || ""),
+            descriptionMatches: verify.success && this.isEquivalentRichText(String(category.description || ""), String(formData["jform[description]"] || "")),
             publishedMatches: verify.success && category.published === String(formData["jform[published]"] || ""),
         };
         const verified = Object.values(verification).every((value) => value === true);
@@ -2042,7 +2234,7 @@ class JoomlaClient {
         const categories = Array.isArray(listResult.data) ? listResult.data : [];
         const stillListed = categories.some((entry) => entry.id === id);
         const verify = await this.getCategory(id);
-        const verified = !stillListed && !verify.success;
+        const verified = this.isDeletionVerified(stillListed, verify, ["published", "state"]);
         return {
             success: verified,
             message: verified ? "Category trashed" : (errorMsg ? errorMsg[1].trim() : successMsg ? "Category trash submitted, but deletion was not verified" : "Unknown result"),
@@ -2086,10 +2278,14 @@ class JoomlaClient {
         const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
         const verify = await this.getCategory(id);
         const category = (verify.data || {});
-        const ok = (successMsg || !errorMsg) && verify.success;
+        const listed = await this.listCategories();
+        const listedCategories = (listed.data || []);
+        const listedCategory = listedCategories.find((entry) => entry.id === id);
+        const checkedOutCleared = !!listedCategory && listedCategory.checkedOut !== "1";
+        const ok = this.isCheckInVerified(successMsg, verify, checkedOutCleared);
         return {
             success: ok,
-            message: ok ? "Category checked in" : (errorMsg ? errorMsg[1].trim() : "Category check-in submitted"),
+            message: ok ? "Category checked in" : (errorMsg ? errorMsg[1].trim() : successMsg ? "Category check-in submitted, but checkout state was not verified as cleared" : "Category check-in submitted"),
             data: this.buildOperationData("category", id, {
                 title: String(category.title || title),
                 state: String(category.published || ""),
@@ -2097,6 +2293,8 @@ class JoomlaClient {
                     attempted: true,
                     preflightVerified: true,
                     existsAfterCheckIn: verify.success,
+                    listedAfterCheckIn: !!listedCategory,
+                    checkedOutCleared,
                 },
             }),
             html: result.html,
@@ -2132,6 +2330,7 @@ class JoomlaClient {
                         enabled: this.extractPublishedState(row),
                         position: cells[4] || "",
                         moduleType: cells[5] || "",
+                        checkedOut: /checked[-_ ]?out|icon-lock|fa-lock/i.test(row) ? "1" : "0",
                     });
                 }
             }
@@ -2514,7 +2713,7 @@ class JoomlaClient {
             languageMatches: !!verify.success && String(module.language || "") === String(formData["jform[language]"] || ""),
             noteMatches: !!verify.success && String(module.note || "") === String(formData["jform[note]"] || ""),
             assignmentMatches: !!verify.success && String(module.assignment || "") === String(formData["jform[assignment]"] || ""),
-            assignedMatches: !!verify.success && JSON.stringify(actualAssigned) === JSON.stringify(expectedAssigned),
+            assignedMatches: !this.shouldVerifyAssignedMembers(String(formData["jform[assignment]"] || "")) || (!!verify.success && JSON.stringify(actualAssigned) === JSON.stringify(expectedAssigned)),
         };
         const verified = Object.values(verification).every((value, index) => index < 2 || value === true) && verification.readbackSucceeded;
         return {
@@ -2644,7 +2843,7 @@ class JoomlaClient {
         const modules = Array.isArray(listResult.data) ? listResult.data : [];
         const stillListed = modules.some((entry) => entry.id === id);
         const verify = await this.getModule(id);
-        const verified = !stillListed && !verify.success;
+        const verified = !stillListed && (successMsg || this.isDeletionVerified(stillListed, verify, ["published", "state"]));
         return {
             success: verified,
             message: verified
@@ -2695,10 +2894,14 @@ class JoomlaClient {
         const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
         const verify = await this.getModule(id);
         const module = (verify.data || {});
-        const ok = (successMsg || !errorMsg) && verify.success;
+        const listed = await this.listModules(String(moduleBefore.clientId || "0"));
+        const listedModules = (listed.data || []);
+        const listedModule = listedModules.find((entry) => entry.id === id);
+        const checkedOutCleared = !!listedModule && listedModule.checkedOut !== "1";
+        const ok = this.isCheckInVerified(successMsg, verify, checkedOutCleared);
         return {
             success: ok,
-            message: ok ? "Module checked in" : (errorMsg ? errorMsg[1].trim() : "Module check-in submitted"),
+            message: ok ? "Module checked in" : (errorMsg ? errorMsg[1].trim() : successMsg ? "Module check-in submitted, but checkout state was not verified as cleared" : "Module check-in submitted"),
             data: this.buildOperationData("module", id, {
                 title: String(module.title || title),
                 state: String(module.published || ""),
@@ -2707,6 +2910,8 @@ class JoomlaClient {
                     attempted: true,
                     preflightVerified: true,
                     existsAfterCheckIn: verify.success,
+                    listedAfterCheckIn: !!listedModule,
+                    checkedOutCleared,
                 },
             }),
             html: result.html,
@@ -3409,8 +3614,8 @@ class JoomlaClient {
         const { preset, root } = this.parseGantryLayoutRoot(html);
         const summary = this.summarizeGantryLayout(root);
         return {
-            success: root.length > 0,
-            message: root.length > 0 ? "Gantry 5 layout retrieved" : "No Gantry 5 layout tree found",
+            success: true,
+            message: root.length > 0 ? "Gantry 5 layout retrieved" : "Gantry 5 layout retrieved (empty root)",
             data: {
                 theme: this.getGantryThemeKey(options.theme),
                 outline,
@@ -3971,6 +4176,7 @@ class JoomlaClient {
                         title,
                         state: this.extractPublishedState(row),
                         type: typeMatch ? this.stripHtml(typeMatch[1]) : "",
+                        checkedOut: /checked[-_ ]?out|icon-lock|fa-lock/i.test(row) ? "1" : "0",
                     });
                 }
             }
@@ -4109,7 +4315,7 @@ class JoomlaClient {
             foundInList: !!savedId,
             readbackSucceeded: !!verify?.success,
             titleMatches: !!verify?.success && String(item.title || "") === data.title,
-            aliasMatches: !!verify?.success && String(item.alias || "") === String(data.alias || ""),
+            aliasMatches: !!verify?.success && this.verifyAlias(String(item.alias || ""), data.alias),
             menuTypeMatches: !!verify?.success && String(item.menuType || "") === data.menuType,
             parentMatches: !!verify?.success && String(item.parentId || "") === String(data.parentId || "1"),
             publishedMatches: !!verify?.success && String(item.published || "") === String(data.published ?? "1"),
@@ -4248,7 +4454,7 @@ class JoomlaClient {
         const items = Array.isArray(listResult?.data) ? listResult?.data : [];
         const stillListed = items.some((entry) => entry.id === id);
         const verify = await this.getMenuItem(id);
-        const verified = !stillListed && !verify.success;
+        const verified = this.isDeletionVerified(stillListed, verify, ["published", "state"]);
         return {
             success: verified,
             message: verified
@@ -4353,10 +4559,14 @@ class JoomlaClient {
         const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
         const verify = await this.getMenuItem(id);
         const item = (verify.data || {});
-        const ok = (successMsg || !errorMsg) && verify.success;
+        const listed = await this.listMenuItems(actualMenuType);
+        const listedItems = (listed.data || []);
+        const listedItem = listedItems.find((entry) => entry.id === id);
+        const checkedOutCleared = !!listedItem && listedItem.checkedOut !== "1";
+        const ok = this.isCheckInVerified(successMsg, verify, checkedOutCleared);
         return {
             success: ok,
-            message: ok ? "Menu item checked in" : (errorMsg ? errorMsg[1].trim() : "Menu item check-in submitted"),
+            message: ok ? "Menu item checked in" : (errorMsg ? errorMsg[1].trim() : successMsg ? "Menu item check-in submitted, but checkout state was not verified as cleared" : "Menu item check-in submitted"),
             data: this.buildOperationData("menuItem", id, {
                 title: String(item.title || title),
                 state: String(item.published || ""),
@@ -4364,6 +4574,8 @@ class JoomlaClient {
                     attempted: true,
                     preflightVerified: true,
                     existsAfterCheckIn: verify.success,
+                    listedAfterCheckIn: !!listedItem,
+                    checkedOutCleared,
                 },
                 menuType: actualMenuType,
             }),

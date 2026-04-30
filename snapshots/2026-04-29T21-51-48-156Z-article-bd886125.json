@@ -1,0 +1,2314 @@
+{
+  "kind": "article",
+  "targetId": "278",
+  "path": "index.php?option=com_content&task=article.edit&id=278",
+  "formId": "",
+  "restoreTask": "article.save",
+  "payload": {
+    "path": "index.php?option=com_content&task=article.edit&id=278",
+    "url": "https://defaults-agent.forge.solutiosoftware.com/administrator/index.php?option=com_content&task=article.edit&id=278",
+    "csrfTokenName": "ea9cec78f60c76ed3900ad80c2e5d57f",
+    "toolbarTasks": [
+      "article.apply",
+      "article.cancel",
+      "article.checkImage",
+      "article.dropzone",
+      "article.logDimension",
+      "article.log_heic",
+      "article.save",
+      "article.save2copy",
+      "article.save2new",
+      "config.store",
+      "file.upload",
+      "tags.searchAjax"
+    ],
+    "forms": [
+      {
+        "id": "item-form",
+        "name": "adminForm",
+        "action": "/administrator/index.php?option=com_content&layout=edit&id=278",
+        "method": "post",
+        "fieldCount": 104,
+        "fields": [
+          {
+            "name": "jform[title]",
+            "id": "jform_title",
+            "kind": "input",
+            "inputType": "text",
+            "value": "MCP Manual Article 2026-04-29T21-51-38-542",
+            "checked": false,
+            "disabled": false,
+            "label": "Title  *"
+          },
+          {
+            "name": "jform[publish_up]",
+            "id": "jform_publish_up",
+            "kind": "input",
+            "inputType": "text",
+            "value": "",
+            "checked": false,
+            "disabled": false,
+            "label": "Start Publishing"
+          },
+          {
+            "name": "jform[publish_down]",
+            "id": "jform_publish_down",
+            "kind": "input",
+            "inputType": "text",
+            "value": "",
+            "checked": false,
+            "disabled": false,
+            "label": "Finish Publishing"
+          },
+          {
+            "name": "image_fulltext",
+            "id": "file-upload",
+            "kind": "input",
+            "inputType": "file",
+            "value": "",
+            "checked": false,
+            "disabled": false,
+            "label": "Image failed to upload Uploading image Upload / Drop image here Please select an image 0 %"
+          },
+          {
+            "name": "jform[images][image_intro]",
+            "id": "jform_images_image_intro",
+            "kind": "input",
+            "inputType": "text",
+            "value": "",
+            "checked": false,
+            "disabled": false,
+            "label": "Intro Image"
+          },
+          {
+            "name": "jform[images][image_intro_alt]",
+            "id": "jform_images_image_intro_alt",
+            "kind": "input",
+            "inputType": "text",
+            "value": "",
+            "checked": false,
+            "disabled": false,
+            "label": "Alt Text"
+          },
+          {
+            "name": "jform[images][image_intro_caption]",
+            "id": "jform_images_image_intro_caption",
+            "kind": "input",
+            "inputType": "text",
+            "value": "",
+            "checked": false,
+            "disabled": false,
+            "label": "Caption"
+          },
+          {
+            "name": "jform[images][image_fulltext_alt]",
+            "id": "jform_images_image_fulltext_alt",
+            "kind": "input",
+            "inputType": "text",
+            "value": "",
+            "checked": false,
+            "disabled": false,
+            "label": "Alt Text"
+          },
+          {
+            "name": "jform[images][image_fulltext_caption]",
+            "id": "jform_images_image_fulltext_caption",
+            "kind": "input",
+            "inputType": "text",
+            "value": "",
+            "checked": false,
+            "disabled": false,
+            "label": "Caption"
+          },
+          {
+            "name": "jform[urls][urla]",
+            "id": "jform_urls_urla",
+            "kind": "input",
+            "inputType": "text",
+            "value": "",
+            "checked": false,
+            "disabled": false,
+            "label": "Link A"
+          },
+          {
+            "name": "jform[urls][urlatext]",
+            "id": "jform_urls_urlatext",
+            "kind": "input",
+            "inputType": "text",
+            "value": "",
+            "checked": false,
+            "disabled": false,
+            "label": "Link A Text"
+          },
+          {
+            "name": "jform[urls][urlb]",
+            "id": "jform_urls_urlb",
+            "kind": "input",
+            "inputType": "text",
+            "value": "",
+            "checked": false,
+            "disabled": false,
+            "label": "Link B"
+          },
+          {
+            "name": "jform[urls][urlbtext]",
+            "id": "jform_urls_urlbtext",
+            "kind": "input",
+            "inputType": "text",
+            "value": "",
+            "checked": false,
+            "disabled": false,
+            "label": "Link B Text"
+          },
+          {
+            "name": "jform[urls][urlc]",
+            "id": "jform_urls_urlc",
+            "kind": "input",
+            "inputType": "text",
+            "value": "",
+            "checked": false,
+            "disabled": false,
+            "label": "Link C"
+          },
+          {
+            "name": "jform[urls][urlctext]",
+            "id": "jform_urls_urlctext",
+            "kind": "input",
+            "inputType": "text",
+            "value": "",
+            "checked": false,
+            "disabled": false,
+            "label": "Link C Text"
+          },
+          {
+            "name": "jform[attribs][alternative_readmore]",
+            "id": "jform_attribs_alternative_readmore",
+            "kind": "input",
+            "inputType": "text",
+            "value": "",
+            "checked": false,
+            "disabled": false,
+            "label": "Read More Text"
+          },
+          {
+            "name": "jform[attribs][article_page_title]",
+            "id": "jform_attribs_article_page_title",
+            "kind": "input",
+            "inputType": "text",
+            "value": "",
+            "checked": false,
+            "disabled": false,
+            "label": "Browser Page Title"
+          },
+          {
+            "name": "jform[featured]",
+            "id": "jform_featured0",
+            "kind": "input",
+            "inputType": "radio",
+            "value": "1",
+            "checked": false,
+            "disabled": false,
+            "label": "Yes"
+          },
+          {
+            "name": "jform[featured]",
+            "id": "jform_featured1",
+            "kind": "input",
+            "inputType": "radio",
+            "value": "0",
+            "checked": true,
+            "disabled": false,
+            "label": "No"
+          },
+          {
+            "name": "jform[created]",
+            "id": "jform_created",
+            "kind": "input",
+            "inputType": "text",
+            "value": "2026-04-29 15:51:48",
+            "checked": false,
+            "disabled": false,
+            "label": "Created Date"
+          },
+          {
+            "name": "jform[created_by]",
+            "id": "jform_created_by_id",
+            "kind": "input",
+            "inputType": "hidden",
+            "value": "932",
+            "checked": false,
+            "disabled": false,
+            "label": ""
+          },
+          {
+            "name": "jform[created_by_alias]",
+            "id": "jform_created_by_alias",
+            "kind": "input",
+            "inputType": "text",
+            "value": "",
+            "checked": false,
+            "disabled": false,
+            "label": "Created by Alias"
+          },
+          {
+            "name": "jform[modified]",
+            "id": "jform_modified",
+            "kind": "input",
+            "inputType": "text",
+            "value": "2026-04-29 15:51:48",
+            "checked": false,
+            "disabled": false,
+            "label": "Modified Date"
+          },
+          {
+            "name": "jform[version]",
+            "id": "jform_version",
+            "kind": "input",
+            "inputType": "text",
+            "value": "1",
+            "checked": false,
+            "disabled": false,
+            "label": "Revision"
+          },
+          {
+            "name": "jform[hits]",
+            "id": "jform_hits",
+            "kind": "input",
+            "inputType": "number",
+            "value": "0",
+            "checked": false,
+            "disabled": false,
+            "label": "Hits"
+          },
+          {
+            "name": "jform[id]",
+            "id": "jform_id",
+            "kind": "input",
+            "inputType": "number",
+            "value": "278",
+            "checked": false,
+            "disabled": false,
+            "label": "ID"
+          },
+          {
+            "name": "jform[xreference]",
+            "id": "jform_xreference",
+            "kind": "input",
+            "inputType": "text",
+            "value": "",
+            "checked": false,
+            "disabled": false,
+            "label": "Key Reference"
+          },
+          {
+            "name": "jform[alias]",
+            "id": "jform_alias",
+            "kind": "input",
+            "inputType": "text",
+            "value": "mcp-manual-article-2026-04-29t21-51-38-542",
+            "checked": false,
+            "disabled": false,
+            "label": "Alias"
+          },
+          {
+            "name": "jform[note]",
+            "id": "jform_note",
+            "kind": "input",
+            "inputType": "text",
+            "value": "",
+            "checked": false,
+            "disabled": false,
+            "label": "Note"
+          },
+          {
+            "name": "jform[metadata][author]",
+            "id": "jform_metadata_author",
+            "kind": "input",
+            "inputType": "text",
+            "value": "",
+            "checked": false,
+            "disabled": false,
+            "label": "Author"
+          },
+          {
+            "name": "jform[metadata][xreference]",
+            "id": "jform_metadata_xreference",
+            "kind": "input",
+            "inputType": "text",
+            "value": "",
+            "checked": false,
+            "disabled": false,
+            "label": "External Reference"
+          },
+          {
+            "name": "jform[version_note]",
+            "id": "jform_version_note",
+            "kind": "input",
+            "inputType": "text",
+            "value": "",
+            "checked": false,
+            "disabled": false,
+            "label": "Version Note"
+          },
+          {
+            "name": "task",
+            "id": "",
+            "kind": "input",
+            "inputType": "hidden",
+            "value": "",
+            "checked": false,
+            "disabled": false,
+            "label": ""
+          },
+          {
+            "name": "return",
+            "id": "",
+            "kind": "input",
+            "inputType": "hidden",
+            "value": "",
+            "checked": false,
+            "disabled": false,
+            "label": ""
+          },
+          {
+            "name": "forcedLanguage",
+            "id": "",
+            "kind": "input",
+            "inputType": "hidden",
+            "value": "",
+            "checked": false,
+            "disabled": false,
+            "label": ""
+          },
+          {
+            "name": "ea9cec78f60c76ed3900ad80c2e5d57f",
+            "id": "",
+            "kind": "input",
+            "inputType": "hidden",
+            "value": "1",
+            "checked": false,
+            "disabled": false,
+            "label": ""
+          },
+          {
+            "name": "jform[articletext]",
+            "id": "jform_articletext",
+            "kind": "textarea",
+            "inputType": "textarea",
+            "value": "\n\t<p>Created by the manual MCP probe.</p><hr id=\"system-readmore\" /><p>Initial full text from the manual MCP probe.</p>",
+            "disabled": false,
+            "label": ""
+          },
+          {
+            "name": "jform[metadesc]",
+            "id": "jform_metadesc",
+            "kind": "textarea",
+            "inputType": "textarea",
+            "value": "",
+            "disabled": false,
+            "label": "Meta Description"
+          },
+          {
+            "name": "jform[metakey]",
+            "id": "jform_metakey",
+            "kind": "textarea",
+            "inputType": "textarea",
+            "value": "",
+            "disabled": false,
+            "label": "Meta Keywords"
+          },
+          {
+            "name": "jform[metadata][rights]",
+            "id": "jform_metadata_rights",
+            "kind": "textarea",
+            "inputType": "textarea",
+            "value": "",
+            "disabled": false,
+            "label": "Content Rights"
+          },
+          {
+            "name": "jform[catid]",
+            "id": "jform_catid",
+            "kind": "select",
+            "inputType": "select",
+            "value": "71",
+            "disabled": false,
+            "label": "Category  *",
+            "options": [
+              {
+                "value": "8",
+                "label": "Headlines / News",
+                "selected": false
+              },
+              {
+                "value": "10",
+                "label": "Rotator",
+                "selected": false
+              },
+              {
+                "value": "9",
+                "label": "Alert",
+                "selected": false
+              },
+              {
+                "value": "32",
+                "label": "Pop Up",
+                "selected": false
+              },
+              {
+                "value": "30",
+                "label": "Staff Items",
+                "selected": false
+              },
+              {
+                "value": "18",
+                "label": "Sacraments Items",
+                "selected": false
+              },
+              {
+                "value": "35",
+                "label": "\" \"Items",
+                "selected": false
+              },
+              {
+                "value": "31",
+                "label": "Page Content (Menu Item Needed)",
+                "selected": false
+              },
+              {
+                "value": "64",
+                "label": "- Liturgical Ministries Items",
+                "selected": false
+              },
+              {
+                "value": "65",
+                "label": "- Parish Life Items",
+                "selected": false
+              },
+              {
+                "value": "66",
+                "label": "- Faith Formation Items",
+                "selected": false
+              },
+              {
+                "value": "24",
+                "label": "Homepage Articles",
+                "selected": false
+              },
+              {
+                "value": "2",
+                "label": "Other",
+                "selected": false
+              },
+              {
+                "value": "15",
+                "label": "- __ Catholic",
+                "selected": false
+              },
+              {
+                "value": "12",
+                "label": "- Preview",
+                "selected": false
+              },
+              {
+                "value": "49",
+                "label": "Homepage Articles (Edit Only)",
+                "selected": false
+              },
+              {
+                "value": "71",
+                "label": "MCP Manual Category 2026-04-29T21-51-38-542 Updated",
+                "selected": true
+              }
+            ]
+          },
+          {
+            "name": "jform[state]",
+            "id": "jform_state",
+            "kind": "select",
+            "inputType": "select",
+            "value": "0",
+            "disabled": false,
+            "label": "Status",
+            "options": [
+              {
+                "value": "1",
+                "label": "Published",
+                "selected": false
+              },
+              {
+                "value": "0",
+                "label": "Unpublished",
+                "selected": true
+              },
+              {
+                "value": "2",
+                "label": "Archived",
+                "selected": false
+              },
+              {
+                "value": "-2",
+                "label": "Trashed",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[images][float_intro]",
+            "id": "jform_images_float_intro",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Image Float",
+            "options": [
+              {
+                "value": "",
+                "label": "Use Global (Left)",
+                "selected": true
+              },
+              {
+                "value": "right",
+                "label": "Right",
+                "selected": false
+              },
+              {
+                "value": "left",
+                "label": "Left",
+                "selected": false
+              },
+              {
+                "value": "none",
+                "label": "None",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[images][float_fulltext]",
+            "id": "jform_images_float_fulltext",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Image Float",
+            "options": [
+              {
+                "value": "",
+                "label": "Use Global (Right)",
+                "selected": true
+              },
+              {
+                "value": "right",
+                "label": "Right",
+                "selected": false
+              },
+              {
+                "value": "left",
+                "label": "Left",
+                "selected": false
+              },
+              {
+                "value": "none",
+                "label": "None",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[urls][targeta]",
+            "id": "jform_urls_targeta",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "URL Target Window",
+            "options": [
+              {
+                "value": "",
+                "label": "Use Global (Open in new window)",
+                "selected": true
+              },
+              {
+                "value": "0",
+                "label": "Open in parent window",
+                "selected": false
+              },
+              {
+                "value": "1",
+                "label": "Open in new window",
+                "selected": false
+              },
+              {
+                "value": "2",
+                "label": "Open in popup",
+                "selected": false
+              },
+              {
+                "value": "3",
+                "label": "Modal",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[urls][targetb]",
+            "id": "jform_urls_targetb",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "URL Target Window",
+            "options": [
+              {
+                "value": "",
+                "label": "Use Global (Open in parent window)",
+                "selected": true
+              },
+              {
+                "value": "0",
+                "label": "Open in parent window",
+                "selected": false
+              },
+              {
+                "value": "1",
+                "label": "Open in new window",
+                "selected": false
+              },
+              {
+                "value": "2",
+                "label": "Open in popup",
+                "selected": false
+              },
+              {
+                "value": "3",
+                "label": "Modal",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[urls][targetc]",
+            "id": "jform_urls_targetc",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "URL Target Window",
+            "options": [
+              {
+                "value": "",
+                "label": "Use Global (Open in parent window)",
+                "selected": true
+              },
+              {
+                "value": "0",
+                "label": "Open in parent window",
+                "selected": false
+              },
+              {
+                "value": "1",
+                "label": "Open in new window",
+                "selected": false
+              },
+              {
+                "value": "2",
+                "label": "Open in popup",
+                "selected": false
+              },
+              {
+                "value": "3",
+                "label": "Modal",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[attribs][article_layout]",
+            "id": "jform_attribs_article_layout",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Layout",
+            "options": [
+              {
+                "value": "",
+                "label": "Use Global",
+                "selected": true
+              },
+              {
+                "value": "_:default",
+                "label": "Default",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[attribs][show_title]",
+            "id": "jform_attribs_show_title",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Show Title",
+            "options": [
+              {
+                "value": "",
+                "label": "Use Global (Show)",
+                "selected": true
+              },
+              {
+                "value": "1",
+                "label": "Show",
+                "selected": false
+              },
+              {
+                "value": "0",
+                "label": "Hide",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[attribs][link_titles]",
+            "id": "jform_attribs_link_titles",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Linked Titles",
+            "options": [
+              {
+                "value": "",
+                "label": "Use Global (No)",
+                "selected": true
+              },
+              {
+                "value": "0",
+                "label": "No",
+                "selected": false
+              },
+              {
+                "value": "1",
+                "label": "Yes",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[attribs][show_tags]",
+            "id": "jform_attribs_show_tags",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Show Tags",
+            "options": [
+              {
+                "value": "",
+                "label": "Use Global (Show)",
+                "selected": true
+              },
+              {
+                "value": "1",
+                "label": "Show",
+                "selected": false
+              },
+              {
+                "value": "0",
+                "label": "Hide",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[attribs][show_intro]",
+            "id": "jform_attribs_show_intro",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Show Intro Text",
+            "options": [
+              {
+                "value": "",
+                "label": "Use Global (Show)",
+                "selected": true
+              },
+              {
+                "value": "1",
+                "label": "Show",
+                "selected": false
+              },
+              {
+                "value": "0",
+                "label": "Hide",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[attribs][info_block_position]",
+            "id": "jform_attribs_info_block_position",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Position of Article Info",
+            "options": [
+              {
+                "value": "",
+                "label": "Use Global (Above)",
+                "selected": true
+              },
+              {
+                "value": "0",
+                "label": "Above",
+                "selected": false
+              },
+              {
+                "value": "1",
+                "label": "Below",
+                "selected": false
+              },
+              {
+                "value": "2",
+                "label": "Split",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[attribs][info_block_show_title]",
+            "id": "jform_attribs_info_block_show_title",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Article Info Title",
+            "options": [
+              {
+                "value": "",
+                "label": "Use Global (Hide)",
+                "selected": true
+              },
+              {
+                "value": "0",
+                "label": "Hide",
+                "selected": false
+              },
+              {
+                "value": "1",
+                "label": "Show",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[attribs][show_category]",
+            "id": "jform_attribs_show_category",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Show Category",
+            "options": [
+              {
+                "value": "",
+                "label": "Use Global (Hide)",
+                "selected": true
+              },
+              {
+                "value": "0",
+                "label": "Hide",
+                "selected": false
+              },
+              {
+                "value": "1",
+                "label": "Show",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[attribs][link_category]",
+            "id": "jform_attribs_link_category",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Link Category",
+            "options": [
+              {
+                "value": "",
+                "label": "Use Global (Yes)",
+                "selected": true
+              },
+              {
+                "value": "0",
+                "label": "No",
+                "selected": false
+              },
+              {
+                "value": "1",
+                "label": "Yes",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[attribs][show_parent_category]",
+            "id": "jform_attribs_show_parent_category",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Show Parent",
+            "options": [
+              {
+                "value": "",
+                "label": "Use Global (Hide)",
+                "selected": true
+              },
+              {
+                "value": "0",
+                "label": "Hide",
+                "selected": false
+              },
+              {
+                "value": "1",
+                "label": "Show",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[attribs][link_parent_category]",
+            "id": "jform_attribs_link_parent_category",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Link Parent",
+            "options": [
+              {
+                "value": "",
+                "label": "Use Global (No)",
+                "selected": true
+              },
+              {
+                "value": "0",
+                "label": "No",
+                "selected": false
+              },
+              {
+                "value": "1",
+                "label": "Yes",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[attribs][show_associations]",
+            "id": "jform_attribs_show_associations",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Show Associations",
+            "options": [
+              {
+                "value": "",
+                "label": "Use Global (Hide)",
+                "selected": true
+              },
+              {
+                "value": "1",
+                "label": "Show",
+                "selected": false
+              },
+              {
+                "value": "0",
+                "label": "Hide",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[attribs][show_author]",
+            "id": "jform_attribs_show_author",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Show Author",
+            "options": [
+              {
+                "value": "",
+                "label": "Use Global (Hide)",
+                "selected": true
+              },
+              {
+                "value": "0",
+                "label": "Hide",
+                "selected": false
+              },
+              {
+                "value": "1",
+                "label": "Show",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[attribs][link_author]",
+            "id": "jform_attribs_link_author",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Link Author",
+            "options": [
+              {
+                "value": "",
+                "label": "Use Global (No)",
+                "selected": true
+              },
+              {
+                "value": "0",
+                "label": "No",
+                "selected": false
+              },
+              {
+                "value": "1",
+                "label": "Yes",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[attribs][show_create_date]",
+            "id": "jform_attribs_show_create_date",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Show Create Date",
+            "options": [
+              {
+                "value": "",
+                "label": "Use Global (Hide)",
+                "selected": true
+              },
+              {
+                "value": "0",
+                "label": "Hide",
+                "selected": false
+              },
+              {
+                "value": "1",
+                "label": "Show",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[attribs][show_modify_date]",
+            "id": "jform_attribs_show_modify_date",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Show Modify Date",
+            "options": [
+              {
+                "value": "",
+                "label": "Use Global (Hide)",
+                "selected": true
+              },
+              {
+                "value": "0",
+                "label": "Hide",
+                "selected": false
+              },
+              {
+                "value": "1",
+                "label": "Show",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[attribs][show_publish_date]",
+            "id": "jform_attribs_show_publish_date",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Show Publish Date",
+            "options": [
+              {
+                "value": "",
+                "label": "Use Global (Hide)",
+                "selected": true
+              },
+              {
+                "value": "0",
+                "label": "Hide",
+                "selected": false
+              },
+              {
+                "value": "1",
+                "label": "Show",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[attribs][show_item_navigation]",
+            "id": "jform_attribs_show_item_navigation",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Show Navigation",
+            "options": [
+              {
+                "value": "",
+                "label": "Use Global (Hide)",
+                "selected": true
+              },
+              {
+                "value": "0",
+                "label": "Hide",
+                "selected": false
+              },
+              {
+                "value": "1",
+                "label": "Show",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[attribs][show_icons]",
+            "id": "jform_attribs_show_icons",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Show Icons",
+            "options": [
+              {
+                "value": "",
+                "label": "Use Global (Hide)",
+                "selected": true
+              },
+              {
+                "value": "0",
+                "label": "Hide",
+                "selected": false
+              },
+              {
+                "value": "1",
+                "label": "Show",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[attribs][show_print_icon]",
+            "id": "jform_attribs_show_print_icon",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Show Print",
+            "options": [
+              {
+                "value": "",
+                "label": "Use Global (Hide)",
+                "selected": true
+              },
+              {
+                "value": "0",
+                "label": "Hide",
+                "selected": false
+              },
+              {
+                "value": "1",
+                "label": "Show",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[attribs][show_email_icon]",
+            "id": "jform_attribs_show_email_icon",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Show Email",
+            "options": [
+              {
+                "value": "",
+                "label": "Use Global (Hide)",
+                "selected": true
+              },
+              {
+                "value": "0",
+                "label": "Hide",
+                "selected": false
+              },
+              {
+                "value": "1",
+                "label": "Show",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[attribs][show_vote]",
+            "id": "jform_attribs_show_vote",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Show Voting",
+            "options": [
+              {
+                "value": "",
+                "label": "Use Global (Hide)",
+                "selected": true
+              },
+              {
+                "value": "0",
+                "label": "Hide",
+                "selected": false
+              },
+              {
+                "value": "1",
+                "label": "Show",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[attribs][show_hits]",
+            "id": "jform_attribs_show_hits",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Show Hits",
+            "options": [
+              {
+                "value": "",
+                "label": "Use Global (Hide)",
+                "selected": true
+              },
+              {
+                "value": "0",
+                "label": "Hide",
+                "selected": false
+              },
+              {
+                "value": "1",
+                "label": "Show",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[attribs][show_noauth]",
+            "id": "jform_attribs_show_noauth",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Show Unauthorised Links",
+            "options": [
+              {
+                "value": "",
+                "label": "Use Global (No)",
+                "selected": true
+              },
+              {
+                "value": "0",
+                "label": "No",
+                "selected": false
+              },
+              {
+                "value": "1",
+                "label": "Yes",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[attribs][urls_position]",
+            "id": "jform_attribs_urls_position",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Positioning of the Links",
+            "options": [
+              {
+                "value": "",
+                "label": "Use Global (Above)",
+                "selected": true
+              },
+              {
+                "value": "0",
+                "label": "Above",
+                "selected": false
+              },
+              {
+                "value": "1",
+                "label": "Below",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[access]",
+            "id": "jform_access",
+            "kind": "select",
+            "inputType": "select",
+            "value": "1",
+            "disabled": false,
+            "label": "Access",
+            "options": [
+              {
+                "value": "1",
+                "label": "Public",
+                "selected": true
+              },
+              {
+                "value": "5",
+                "label": "Guest",
+                "selected": false
+              },
+              {
+                "value": "2",
+                "label": "Registered",
+                "selected": false
+              },
+              {
+                "value": "3",
+                "label": "Special",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[language]",
+            "id": "jform_language",
+            "kind": "select",
+            "inputType": "select",
+            "value": "*",
+            "disabled": false,
+            "label": "Language",
+            "options": [
+              {
+                "value": "*",
+                "label": "All",
+                "selected": true
+              },
+              {
+                "value": "en-GB",
+                "label": "English (UK)",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[tags][]",
+            "id": "jform_tags",
+            "kind": "select",
+            "inputType": "select-multiple",
+            "value": "",
+            "disabled": false,
+            "label": "Tags",
+            "options": []
+          },
+          {
+            "name": "jform[metadata][robots]",
+            "id": "jform_metadata_robots",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Robots",
+            "options": [
+              {
+                "value": "",
+                "label": "Use Global",
+                "selected": true
+              },
+              {
+                "value": "index, follow",
+                "label": "index, follow",
+                "selected": false
+              },
+              {
+                "value": "noindex, follow",
+                "label": "noindex, follow",
+                "selected": false
+              },
+              {
+                "value": "index, nofollow",
+                "label": "index, nofollow",
+                "selected": false
+              },
+              {
+                "value": "noindex, nofollow",
+                "label": "noindex, nofollow",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[attribs][show_publishing_options]",
+            "id": "jform_attribs_show_publishing_options",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Show Publishing Options",
+            "options": [
+              {
+                "value": "",
+                "label": "Use Global (Yes)",
+                "selected": true
+              },
+              {
+                "value": "0",
+                "label": "No",
+                "selected": false
+              },
+              {
+                "value": "1",
+                "label": "Yes",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[attribs][show_article_options]",
+            "id": "jform_attribs_show_article_options",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Show Article Options",
+            "options": [
+              {
+                "value": "",
+                "label": "Use Global (Yes)",
+                "selected": true
+              },
+              {
+                "value": "0",
+                "label": "No",
+                "selected": false
+              },
+              {
+                "value": "1",
+                "label": "Yes",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[attribs][show_urls_images_backend]",
+            "id": "jform_attribs_show_urls_images_backend",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Administrator Images and Links",
+            "options": [
+              {
+                "value": "",
+                "label": "Use Global (Yes)",
+                "selected": true
+              },
+              {
+                "value": "0",
+                "label": "No",
+                "selected": false
+              },
+              {
+                "value": "1",
+                "label": "Yes",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[attribs][show_urls_images_frontend]",
+            "id": "jform_attribs_show_urls_images_frontend",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Frontend Images and Links",
+            "options": [
+              {
+                "value": "",
+                "label": "Use Global (Yes)",
+                "selected": true
+              },
+              {
+                "value": "0",
+                "label": "No",
+                "selected": false
+              },
+              {
+                "value": "1",
+                "label": "Yes",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[rules][core.delete][1]",
+            "id": "jform_rules_core.delete_1",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Delete",
+            "options": [
+              {
+                "value": "",
+                "label": "Inherited",
+                "selected": true
+              },
+              {
+                "value": "1",
+                "label": "Allowed",
+                "selected": false
+              },
+              {
+                "value": "0",
+                "label": "Denied",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[rules][core.edit][1]",
+            "id": "jform_rules_core.edit_1",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Edit",
+            "options": [
+              {
+                "value": "",
+                "label": "Inherited",
+                "selected": true
+              },
+              {
+                "value": "1",
+                "label": "Allowed",
+                "selected": false
+              },
+              {
+                "value": "0",
+                "label": "Denied",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[rules][core.edit.state][1]",
+            "id": "jform_rules_core.edit.state_1",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Edit State",
+            "options": [
+              {
+                "value": "",
+                "label": "Inherited",
+                "selected": true
+              },
+              {
+                "value": "1",
+                "label": "Allowed",
+                "selected": false
+              },
+              {
+                "value": "0",
+                "label": "Denied",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[rules][core.delete][11]",
+            "id": "jform_rules_core.delete_11",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Delete",
+            "options": [
+              {
+                "value": "",
+                "label": "Inherited",
+                "selected": true
+              },
+              {
+                "value": "1",
+                "label": "Allowed",
+                "selected": false
+              },
+              {
+                "value": "0",
+                "label": "Denied",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[rules][core.edit][11]",
+            "id": "jform_rules_core.edit_11",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Edit",
+            "options": [
+              {
+                "value": "",
+                "label": "Inherited",
+                "selected": true
+              },
+              {
+                "value": "1",
+                "label": "Allowed",
+                "selected": false
+              },
+              {
+                "value": "0",
+                "label": "Denied",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[rules][core.edit.state][11]",
+            "id": "jform_rules_core.edit.state_11",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Edit State",
+            "options": [
+              {
+                "value": "",
+                "label": "Inherited",
+                "selected": true
+              },
+              {
+                "value": "1",
+                "label": "Allowed",
+                "selected": false
+              },
+              {
+                "value": "0",
+                "label": "Denied",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[rules][core.delete][12]",
+            "id": "jform_rules_core.delete_12",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Delete",
+            "options": [
+              {
+                "value": "",
+                "label": "Inherited",
+                "selected": true
+              },
+              {
+                "value": "1",
+                "label": "Allowed",
+                "selected": false
+              },
+              {
+                "value": "0",
+                "label": "Denied",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[rules][core.edit][12]",
+            "id": "jform_rules_core.edit_12",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Edit",
+            "options": [
+              {
+                "value": "",
+                "label": "Inherited",
+                "selected": true
+              },
+              {
+                "value": "1",
+                "label": "Allowed",
+                "selected": false
+              },
+              {
+                "value": "0",
+                "label": "Denied",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[rules][core.edit.state][12]",
+            "id": "jform_rules_core.edit.state_12",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Edit State",
+            "options": [
+              {
+                "value": "",
+                "label": "Inherited",
+                "selected": true
+              },
+              {
+                "value": "1",
+                "label": "Allowed",
+                "selected": false
+              },
+              {
+                "value": "0",
+                "label": "Denied",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[rules][core.delete][13]",
+            "id": "jform_rules_core.delete_13",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Delete",
+            "options": [
+              {
+                "value": "",
+                "label": "Inherited",
+                "selected": true
+              },
+              {
+                "value": "1",
+                "label": "Allowed",
+                "selected": false
+              },
+              {
+                "value": "0",
+                "label": "Denied",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[rules][core.edit][13]",
+            "id": "jform_rules_core.edit_13",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Edit",
+            "options": [
+              {
+                "value": "",
+                "label": "Inherited",
+                "selected": true
+              },
+              {
+                "value": "1",
+                "label": "Allowed",
+                "selected": false
+              },
+              {
+                "value": "0",
+                "label": "Denied",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[rules][core.edit.state][13]",
+            "id": "jform_rules_core.edit.state_13",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Edit State",
+            "options": [
+              {
+                "value": "",
+                "label": "Inherited",
+                "selected": true
+              },
+              {
+                "value": "1",
+                "label": "Allowed",
+                "selected": false
+              },
+              {
+                "value": "0",
+                "label": "Denied",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[rules][core.delete][9]",
+            "id": "jform_rules_core.delete_9",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Delete",
+            "options": [
+              {
+                "value": "",
+                "label": "Inherited",
+                "selected": true
+              },
+              {
+                "value": "1",
+                "label": "Allowed",
+                "selected": false
+              },
+              {
+                "value": "0",
+                "label": "Denied",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[rules][core.edit][9]",
+            "id": "jform_rules_core.edit_9",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Edit",
+            "options": [
+              {
+                "value": "",
+                "label": "Inherited",
+                "selected": true
+              },
+              {
+                "value": "1",
+                "label": "Allowed",
+                "selected": false
+              },
+              {
+                "value": "0",
+                "label": "Denied",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[rules][core.edit.state][9]",
+            "id": "jform_rules_core.edit.state_9",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Edit State",
+            "options": [
+              {
+                "value": "",
+                "label": "Inherited",
+                "selected": true
+              },
+              {
+                "value": "1",
+                "label": "Allowed",
+                "selected": false
+              },
+              {
+                "value": "0",
+                "label": "Denied",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[rules][core.delete][2]",
+            "id": "jform_rules_core.delete_2",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Delete",
+            "options": [
+              {
+                "value": "",
+                "label": "Inherited",
+                "selected": true
+              },
+              {
+                "value": "1",
+                "label": "Allowed",
+                "selected": false
+              },
+              {
+                "value": "0",
+                "label": "Denied",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[rules][core.edit][2]",
+            "id": "jform_rules_core.edit_2",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Edit",
+            "options": [
+              {
+                "value": "",
+                "label": "Inherited",
+                "selected": true
+              },
+              {
+                "value": "1",
+                "label": "Allowed",
+                "selected": false
+              },
+              {
+                "value": "0",
+                "label": "Denied",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[rules][core.edit.state][2]",
+            "id": "jform_rules_core.edit.state_2",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Edit State",
+            "options": [
+              {
+                "value": "",
+                "label": "Inherited",
+                "selected": true
+              },
+              {
+                "value": "1",
+                "label": "Allowed",
+                "selected": false
+              },
+              {
+                "value": "0",
+                "label": "Denied",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[rules][core.delete][10]",
+            "id": "jform_rules_core.delete_10",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Delete",
+            "options": [
+              {
+                "value": "",
+                "label": "Inherited",
+                "selected": true
+              },
+              {
+                "value": "1",
+                "label": "Allowed",
+                "selected": false
+              },
+              {
+                "value": "0",
+                "label": "Denied",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[rules][core.edit][10]",
+            "id": "jform_rules_core.edit_10",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Edit",
+            "options": [
+              {
+                "value": "",
+                "label": "Inherited",
+                "selected": true
+              },
+              {
+                "value": "1",
+                "label": "Allowed",
+                "selected": false
+              },
+              {
+                "value": "0",
+                "label": "Denied",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[rules][core.edit.state][10]",
+            "id": "jform_rules_core.edit.state_10",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Edit State",
+            "options": [
+              {
+                "value": "",
+                "label": "Inherited",
+                "selected": true
+              },
+              {
+                "value": "1",
+                "label": "Allowed",
+                "selected": false
+              },
+              {
+                "value": "0",
+                "label": "Denied",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[rules][core.delete][8]",
+            "id": "jform_rules_core.delete_8",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Delete",
+            "options": [
+              {
+                "value": "",
+                "label": "Inherited",
+                "selected": true
+              },
+              {
+                "value": "1",
+                "label": "Allowed",
+                "selected": false
+              },
+              {
+                "value": "0",
+                "label": "Denied",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[rules][core.edit][8]",
+            "id": "jform_rules_core.edit_8",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Edit",
+            "options": [
+              {
+                "value": "",
+                "label": "Inherited",
+                "selected": true
+              },
+              {
+                "value": "1",
+                "label": "Allowed",
+                "selected": false
+              },
+              {
+                "value": "0",
+                "label": "Denied",
+                "selected": false
+              }
+            ]
+          },
+          {
+            "name": "jform[rules][core.edit.state][8]",
+            "id": "jform_rules_core.edit.state_8",
+            "kind": "select",
+            "inputType": "select",
+            "value": "",
+            "disabled": false,
+            "label": "Edit State",
+            "options": [
+              {
+                "value": "",
+                "label": "Inherited",
+                "selected": true
+              },
+              {
+                "value": "1",
+                "label": "Allowed",
+                "selected": false
+              },
+              {
+                "value": "0",
+                "label": "Denied",
+                "selected": false
+              }
+            ]
+          }
+        ],
+        "values": {
+          "jform[title]": "MCP Manual Article 2026-04-29T21-51-38-542",
+          "jform[publish_up]": "",
+          "jform[publish_down]": "",
+          "image_fulltext": "",
+          "jform[images][image_intro]": "",
+          "jform[images][image_intro_alt]": "",
+          "jform[images][image_intro_caption]": "",
+          "jform[images][image_fulltext_alt]": "",
+          "jform[images][image_fulltext_caption]": "",
+          "jform[urls][urla]": "",
+          "jform[urls][urlatext]": "",
+          "jform[urls][urlb]": "",
+          "jform[urls][urlbtext]": "",
+          "jform[urls][urlc]": "",
+          "jform[urls][urlctext]": "",
+          "jform[attribs][alternative_readmore]": "",
+          "jform[attribs][article_page_title]": "",
+          "jform[featured]": "0",
+          "jform[created]": "2026-04-29 15:51:48",
+          "jform[created_by]": "932",
+          "jform[created_by_alias]": "",
+          "jform[modified]": "2026-04-29 15:51:48",
+          "jform[version]": "1",
+          "jform[hits]": "0",
+          "jform[id]": "278",
+          "jform[xreference]": "",
+          "jform[alias]": "mcp-manual-article-2026-04-29t21-51-38-542",
+          "jform[note]": "",
+          "jform[metadata][author]": "",
+          "jform[metadata][xreference]": "",
+          "jform[version_note]": "",
+          "task": "",
+          "return": "",
+          "forcedLanguage": "",
+          "ea9cec78f60c76ed3900ad80c2e5d57f": "1",
+          "jform[articletext]": "\n\t<p>Created by the manual MCP probe.</p><hr id=\"system-readmore\" /><p>Initial full text from the manual MCP probe.</p>",
+          "jform[metadesc]": "",
+          "jform[metakey]": "",
+          "jform[metadata][rights]": "",
+          "jform[catid]": "71",
+          "jform[state]": "0",
+          "jform[images][float_intro]": "",
+          "jform[images][float_fulltext]": "",
+          "jform[urls][targeta]": "",
+          "jform[urls][targetb]": "",
+          "jform[urls][targetc]": "",
+          "jform[attribs][article_layout]": "",
+          "jform[attribs][show_title]": "",
+          "jform[attribs][link_titles]": "",
+          "jform[attribs][show_tags]": "",
+          "jform[attribs][show_intro]": "",
+          "jform[attribs][info_block_position]": "",
+          "jform[attribs][info_block_show_title]": "",
+          "jform[attribs][show_category]": "",
+          "jform[attribs][link_category]": "",
+          "jform[attribs][show_parent_category]": "",
+          "jform[attribs][link_parent_category]": "",
+          "jform[attribs][show_associations]": "",
+          "jform[attribs][show_author]": "",
+          "jform[attribs][link_author]": "",
+          "jform[attribs][show_create_date]": "",
+          "jform[attribs][show_modify_date]": "",
+          "jform[attribs][show_publish_date]": "",
+          "jform[attribs][show_item_navigation]": "",
+          "jform[attribs][show_icons]": "",
+          "jform[attribs][show_print_icon]": "",
+          "jform[attribs][show_email_icon]": "",
+          "jform[attribs][show_vote]": "",
+          "jform[attribs][show_hits]": "",
+          "jform[attribs][show_noauth]": "",
+          "jform[attribs][urls_position]": "",
+          "jform[access]": "1",
+          "jform[language]": "*",
+          "jform[tags][]": "",
+          "jform[metadata][robots]": "",
+          "jform[attribs][show_publishing_options]": "",
+          "jform[attribs][show_article_options]": "",
+          "jform[attribs][show_urls_images_backend]": "",
+          "jform[attribs][show_urls_images_frontend]": "",
+          "jform[rules][core.delete][1]": "",
+          "jform[rules][core.edit][1]": "",
+          "jform[rules][core.edit.state][1]": "",
+          "jform[rules][core.delete][11]": "",
+          "jform[rules][core.edit][11]": "",
+          "jform[rules][core.edit.state][11]": "",
+          "jform[rules][core.delete][12]": "",
+          "jform[rules][core.edit][12]": "",
+          "jform[rules][core.edit.state][12]": "",
+          "jform[rules][core.delete][13]": "",
+          "jform[rules][core.edit][13]": "",
+          "jform[rules][core.edit.state][13]": "",
+          "jform[rules][core.delete][9]": "",
+          "jform[rules][core.edit][9]": "",
+          "jform[rules][core.edit.state][9]": "",
+          "jform[rules][core.delete][2]": "",
+          "jform[rules][core.edit][2]": "",
+          "jform[rules][core.edit.state][2]": "",
+          "jform[rules][core.delete][10]": "",
+          "jform[rules][core.edit][10]": "",
+          "jform[rules][core.edit.state][10]": "",
+          "jform[rules][core.delete][8]": "",
+          "jform[rules][core.edit][8]": "",
+          "jform[rules][core.edit.state][8]": ""
+        }
+      }
+    ]
+  },
+  "id": "2026-04-29T21-51-48-156Z-article-bd886125",
+  "snapshotId": "2026-04-29T21-51-48-156Z-article-bd886125",
+  "createdAt": "2026-04-29T21:51:48.157Z"
+}
