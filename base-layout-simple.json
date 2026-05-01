@@ -1,0 +1,66 @@
+{
+  "children": [
+    {
+      "type": "section",
+      "attributes": {
+        "class": [],
+        "boxed": "",
+        "max-width": "",
+        "background": "",
+        "background-image": "",
+        "background-overlay": "",
+        "background-repeat": "",
+        "background-size": "",
+        "background-attachment": "",
+        "background-position": "",
+        "background-video": "",
+        "text-color": "",
+        "link-color": "",
+        "link-hover-color": "",
+        "accent-color": "",
+        "padding": "",
+        "margin": "",
+        "extra": []
+      },
+      "children": [
+        {
+          "type": "grid",
+          "attributes": {
+            "boxed": "",
+            "max-width": "",
+            "class": [],
+            "extra": []
+          },
+          "children": [
+            {
+              "type": "block",
+              "subtype": "system",
+              "attributes": {
+                "id": "",
+                "class": [],
+                "variations": "",
+                "title": "",
+                "chrome": "",
+                "extra": []
+              },
+              "children": "messages"
+            },
+            {
+              "type": "block",
+              "subtype": "system",
+              "attributes": {
+                "id": "",
+                "class": [],
+                "variations": "",
+                "title": "",
+                "chrome": "",
+                "extra": []
+              },
+              "children": "content"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

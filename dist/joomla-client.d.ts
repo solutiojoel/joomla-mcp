@@ -15,6 +15,18 @@ export declare class JoomlaClient {
     private config;
     private cookies;
     private tokenName;
+    /**
+     * Cached Gantry 5 configuration entry URL (including CSRF token).
+     * Populated on first successful navigation to the Gantry theme configure page
+     * and reused for all subsequent calls within the same process lifetime.
+     * This avoids the "stale snapshot" error caused by re-navigating to the
+     * themes page (which can refresh the token) between snapshot and save.
+     */
+    private gantryEntryUrl;
+    /** Per-outline layout URL cache: outline id → absolute URL. Once discovered, reused directly. */
+    private gantryOutlineLayoutUrls;
+    /** Per-outline layout root+preset cache. Populated on fetch; used to skip re-fetch in liveBefore check. Cleared on login and after successful save. */
+    private gantryLayoutRootCache;
     constructor(config: JoomlaConfig);
     getConfig(): JoomlaConfig;
     private getAdminUrl;

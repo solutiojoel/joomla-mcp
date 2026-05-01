@@ -1,0 +1,335 @@
+{
+  "children": [
+    {
+      "type": "section",
+      "attributes": {
+        "class": [],
+        "boxed": "",
+        "max-width": "",
+        "background": "",
+        "background-image": "",
+        "background-overlay": "",
+        "background-repeat": "",
+        "background-size": "",
+        "background-attachment": "",
+        "background-position": "",
+        "background-video": "",
+        "text-color": "",
+        "link-color": "",
+        "link-hover-color": "",
+        "accent-color": "",
+        "padding": "",
+        "margin": "",
+        "extra": {}
+      },
+      "children": [
+        {
+          "type": "grid",
+          "attributes": {
+            "boxed": "",
+            "max-width": "",
+            "class": [],
+            "extra": {}
+          },
+          "children": [
+            {
+              "type": "block",
+              "subtype": "particle",
+              "attributes": {
+                "id": "",
+                "class": ["show-mobile"],
+                "variations": "",
+                "title": "",
+                "chrome": "",
+                "extra": {}
+              },
+              "children": {
+                "type": "particle",
+                "subtype": "blockcontent",
+                "attributes": {
+                  "enabled": "1",
+                  "content": "<img src=\"/template/logo-mobile.png\" alt=\"Logo\" />",
+                  "particle": {
+                    "title": "Mobile Logo",
+                    "options": {
+                      "type": "particle"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "type": "block",
+              "subtype": "particle",
+              "attributes": {
+                "id": "",
+                "class": ["hidden-phone"],
+                "variations": "",
+                "title": "",
+                "chrome": "",
+                "extra": {}
+              },
+              "children": {
+                "type": "particle",
+                "subtype": "blockcontent",
+                "attributes": {
+                  "enabled": "1",
+                  "content": "<img src=\"/template/logo.png\" alt=\"Logo\" />",
+                  "particle": {
+                    "title": "Desktop Logo",
+                    "options": {
+                      "type": "particle"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "type": "block",
+              "subtype": "spacer",
+              "attributes": {
+                "id": "",
+                "class": [],
+                "variations": "",
+                "title": "",
+                "chrome": "",
+                "extra": {}
+              },
+              "children": {}
+            },
+            {
+              "type": "block",
+              "subtype": "particle",
+              "attributes": {
+                "id": "",
+                "class": [],
+                "variations": "",
+                "title": "",
+                "chrome": "",
+                "extra": {}
+              },
+              "children": {
+                "type": "particle",
+                "subtype": "blockcontent",
+                "attributes": {
+                  "enabled": "1",
+                  "content": "<a href=\"#\">Link 1</a> <a href=\"#\">Link 2</a>",
+                  "particle": {
+                    "title": "Top Links",
+                    "options": {
+                      "type": "particle"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "type": "block",
+              "subtype": "particle",
+              "attributes": {
+                "id": "",
+                "class": [],
+                "variations": "",
+                "title": "",
+                "chrome": "",
+                "extra": {}
+              },
+              "children": {
+                "type": "particle",
+                "subtype": "menu",
+                "attributes": {
+                  "enabled": "1",
+                  "menu": "mainmenu",
+                  "base": "0",
+                  "startLevel": "1",
+                  "maxLevels": "0",
+                  "renderTitles": "0",
+                  "hoverExpand": "1",
+                  "mobileTarget": "0",
+                  "forceTarget": "0",
+                  "particle": {
+                    "title": "Main Menu",
+                    "options": {
+                      "type": "particle"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "section",
+      "attributes": {
+        "class": [],
+        "boxed": "",
+        "max-width": "",
+        "background": "",
+        "background-image": "",
+        "background-overlay": "",
+        "background-repeat": "",
+        "background-size": "",
+        "background-attachment": "",
+        "background-position": "",
+        "background-video": "",
+        "text-color": "",
+        "link-color": "",
+        "link-hover-color": "",
+        "accent-color": "",
+        "padding": "",
+        "margin": "",
+        "extra": {}
+      },
+      "children": [
+        {
+          "type": "grid",
+          "attributes": {
+            "boxed": "",
+            "max-width": "",
+            "class": [],
+            "extra": {}
+          },
+          "children": [
+            {
+              "type": "block",
+              "subtype": "system",
+              "attributes": {
+                "id": "",
+                "class": [],
+                "variations": "",
+                "title": "",
+                "chrome": "",
+                "extra": {}
+              },
+              "children": "messages"
+            },
+            {
+              "type": "block",
+              "subtype": "system",
+              "attributes": {
+                "id": "",
+                "class": [],
+                "variations": "",
+                "title": "",
+                "chrome": "",
+                "extra": {}
+              },
+              "children": "content"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "section",
+      "attributes": {
+        "class": [],
+        "boxed": "",
+        "max-width": "",
+        "background": "",
+        "background-image": "",
+        "background-overlay": "",
+        "background-repeat": "",
+        "background-size": "",
+        "background-attachment": "",
+        "background-position": "",
+        "background-video": "",
+        "text-color": "",
+        "link-color": "",
+        "link-hover-color": "",
+        "accent-color": "",
+        "padding": "",
+        "margin": "",
+        "extra": {}
+      },
+      "children": [
+        {
+          "type": "grid",
+          "attributes": {
+            "boxed": "",
+            "max-width": "",
+            "class": [],
+            "extra": {}
+          },
+          "children": [
+            {
+              "type": "block",
+              "subtype": "particle",
+              "attributes": {
+                "id": "",
+                "class": [],
+                "variations": "",
+                "title": "",
+                "chrome": "",
+                "extra": {}
+              },
+              "children": {
+                "type": "particle",
+                "subtype": "contentarray",
+                "attributes": {
+                  "enabled": "1",
+                  "article": {
+                    "filter": {
+                      "categories": "24",
+                      "articles": "footer",
+                      "tags": [],
+                      "featured": ""
+                    },
+                    "limit": {
+                      "total": "1",
+                      "start": "0",
+                      "columns": "1"
+                    },
+                    "sort": {
+                      "orderby": "publish_up",
+                      "ordering": "ASC"
+                    },
+                    "display": {
+                      "image": {
+                        "enabled": "intro",
+                        "width": "400",
+                        "height": "300"
+                      },
+                      "title": {
+                        "enabled": "show",
+                        "limit": ""
+                      },
+                      "date": {
+                        "enabled": "show",
+                        "format": "l, F d, Y"
+                      },
+                      "read_more": {
+                        "enabled": "show",
+                        "label": "",
+                        "css": ""
+                      },
+                      "content": {
+                        "enabled": "show",
+                        "limit": ""
+                      },
+                      "author": {
+                        "enabled": "show"
+                      }
+                    }
+                  },
+                  "css": {
+                    "class": ""
+                  },
+                  "extra": {},
+                  "particle": {
+                    "title": "Footer Content",
+                    "options": {
+                      "type": "particle"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

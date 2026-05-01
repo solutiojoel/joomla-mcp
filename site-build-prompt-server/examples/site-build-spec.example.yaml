@@ -6,9 +6,106 @@ site:
   adminBaseUrl: https://new-site.example/administrator
   menuTitle: Main Menu SEP
   menuType: main-menu-sep
+  # siteType: church | school
+  siteType: church
+  # buildType: new | redesign
+  buildType: new
+  # For redesigns, provide the year so the correct image sub-folder is created.
+  # redesignYear: 2026
   notes: |
     Build this site as a new parish site on the provided URL.
     Do not rely on a static URL from .env; use the siteUrl in this spec.
+
+# ---------------------------------------------------------------------------
+# Phase 1 — Assets
+# ---------------------------------------------------------------------------
+# List every image asset that needs to be uploaded via Cyberduck (FTPS).
+# cyberduckPath:  full server path  →  e.g. sep/images/template/logo.svg
+# gantryPath:     path as used inside the Gantry file browser (no /images/ prefix)
+#                 →  e.g. /template/logo.svg
+# For redesigns the sub-folder is: template/{siteType}{redesignYear}/
+assets:
+  uploadBasePath: sep/images/template
+  files:
+    - role: logo-desktop
+      filename: logo.svg
+      cyberduckPath: sep/images/template/logo.svg
+      gantryPath: /template/logo.svg
+      notes: Desktop / default logo, transparent background preferred.
+    - role: logo-mobile
+      filename: logo-mobile.svg
+      cyberduckPath: sep/images/template/logo-mobile.svg
+      gantryPath: /template/logo-mobile.svg
+      notes: Simplified or same as desktop. Used with CSS class show-mobile.
+    - role: favicon
+      filename: favicon.png
+      cyberduckPath: sep/images/template/favicon.png
+      gantryPath: /template/favicon.png
+      notes: 64x64 PNG.
+    - role: apple-touch
+      filename: apple-touch.png
+      cyberduckPath: sep/images/template/apple-touch.png
+      gantryPath: /template/apple-touch.png
+      notes: 180x180 PNG.
+    - role: hero-background
+      filename: hero-bg.jpg
+      cyberduckPath: sep/images/template/hero-bg.jpg
+      gantryPath: /template/hero-bg.jpg
+      notes: Full-bleed hero image for the Swiper particle.
+    # Add one entry per quicklink card image, social image, etc.
+    - role: quicklink-image
+      filename: ql-worship.jpg
+      cyberduckPath: sep/images/template/ql-worship.jpg
+      gantryPath: /template/ql-worship.jpg
+      notes: Quicklinks card — Worship/Mass times.
+
+# ---------------------------------------------------------------------------
+# Phase 2 — Gantry Base Outline > Page Settings
+# ---------------------------------------------------------------------------
+gantryBaseOutline:
+  pageSettings:
+    metaTags:
+      siteName: St Example Parish
+      description: Welcome to St. Example Parish — a warm, welcoming Catholic community.
+      # Additional meta fields as needed (og:image, etc.)
+    favicon: /template/favicon.png
+    appleTouchIcon: /template/apple-touch.png
+    # cssVariables: paste or generate the :root block that goes in the Custom Content field.
+    cssVariables: |
+      :root {
+        --color-primary:   #5a2d82;
+        --color-secondary: #b8a04a;
+        --font-heading:    'Playfair Display', serif;
+        --font-body:       'Open Sans', sans-serif;
+      }
+
+# ---------------------------------------------------------------------------
+# Phase 4 — Base Outline Layout (inherited by all subsite outlines)
+# ---------------------------------------------------------------------------
+baseOutlineLayout:
+  navigation:
+    row1:
+      - particle: logo-image
+        role: logo-mobile
+        blockCssClass: show-mobile
+      - particle: spacer
+      - particle: blockcontent
+        title: Toplinks
+        blockCssClass: toplinks
+    row2:
+      - particle: logo-image
+        role: logo-desktop
+        blockCssClass: hidden-phone
+      - particle: spacer
+    row3:
+      - particle: menu
+        menuTitle: Main Menu SEP
+  footer:
+    - particle: contentarray
+      articleBinding:
+        mode: explicit_article
+        articleTitle: Footer
+        categoryTitle: Homepage Articles
 
 contentDefaults:
   pageCategoryTitle: Page Content
@@ -70,12 +167,139 @@ moduleCatalog:
     position: footer-a
     published: '1'
 
+# ---------------------------------------------------------------------------
+# Phase 3 — Homepage Articles
+# ---------------------------------------------------------------------------
+# Each entry here corresponds to a standalone article that needs to be created
+# in Joomla under the homepageArticlesCategoryTitle category.
+# These articles supply content to Content Array particles on the Home Outline.
+homepageArticles:
+  - title: Footer
+    notes: Parish address, office hours, phone, email, social media links.
+    content:
+      mode: auto_generate
+      guidance: Generate a footer block with address, office hours, and social icon links.
+  - title: Mass Schedule
+    notes: Full mass and confession schedule table for all churches in this subsite.
+    content:
+      mode: pull_url
+      sourceUrl: https://new-site.example/mass-confession
+      cleanupNotes: Preserve church-specific schedule groupings.
+  - title: Facebook Widget
+    notes: Facebook page embed or placeholder. Use the FB Page Plugin embed code.
+    content:
+      mode: manual_html
+      html: |
+        <!-- Paste Facebook Page Plugin embed code here -->
+  - title: Instagram Widget
+    notes: Instagram feed embed or placeholder.
+    content:
+      mode: manual_html
+      html: |
+        <!-- Paste Instagram embed/widget code here -->
+  - title: Calendar Feed
+    notes: Parish calendar iframe or widget embed.
+    content:
+      mode: manual_html
+      html: |
+        <!-- Paste calendar embed (Google Calendar iframe, etc.) here -->
+
+# ---------------------------------------------------------------------------
+# Phase 5 — Home Outline Layout
+# ---------------------------------------------------------------------------
 homepage:
   sourceOutlineBlueprint: blueprints/home-outline-remap-test.yaml
   artworkNotes: |
     Homepage should feel modern but still parish-appropriate.
     Keep hero, quicklinks, Mass times, news/events, and social sections visually distinct.
   particles:
+    # Slideshow — Hero (Swiper) + Mass Schedule side by side
+    - section: slideshow
+      particleType: swiper
+      title: Hero Slider
+      notes: Full-bleed hero images. Assign hero-bg assets from the assets section.
+    - section: slideshow
+      particleType: contentarray
+      title: Mass Schedule
+      blockCssClass: mass-schedule-widget
+      articleBinding:
+        mode: explicit_article
+        articleTitle: Mass Schedule
+        categoryTitle: Homepage Articles
+        createIfMissing: true
+
+    # Feature — Quicklinks section title + quicklink cards
+    - section: feature
+      particleType: customhtml
+      title: Quicklinks Title
+      blockCssClass: quicklinks-title
+      contentBinding:
+        mode: manual_html
+        html: <h2>Quick Links</h2>
+    - section: feature
+      particleType: blockcontent
+      title: Quicklinks
+      blockCssClass: quicklinks-cards
+      notes: One card per quicklink. Use images from the assets section.
+
+    # g-container-main Sidebar — News feed + view-all button
+    - section: sidebar
+      particleType: contentarray
+      title: News & Events
+      blockCssClass: news-feed
+      articleBinding:
+        mode: category
+        categoryTitle: News
+        total: 6
+    - section: sidebar
+      particleType: customhtml
+      title: View All News Button
+      contentBinding:
+        mode: manual_html
+        html: <a class="button" href="/news-events">View all News &amp; Events</a>
+
+    # g-container-main Main — Facebook feed
+    - section: main
+      particleType: contentarray
+      title: Facebook Feed
+      blockCssClass: facebook-feed
+      articleBinding:
+        mode: explicit_article
+        articleTitle: Facebook Widget
+        categoryTitle: Homepage Articles
+
+    # g-container-main Aside — Home Ads module instance
+    - section: aside
+      particleType: moduleinstance
+      title: Home Ads
+      notes: Assign to the Home Ads ad-particle module.
+
+    # Expanded — Links section
+    - section: expanded
+      particleType: blockcontent
+      title: Links Section
+      blockCssClass: links-section
+      notes: Card-style links below the news/social section.
+
+    # Extension — Calendar + Instagram
+    - section: extension
+      particleType: contentarray
+      title: Calendar
+      blockCssClass: calendar-feed
+      articleBinding:
+        mode: explicit_article
+        articleTitle: Calendar Feed
+        categoryTitle: Homepage Articles
+    - section: extension
+      particleType: contentarray
+      title: Instagram
+      blockCssClass: instagram-feed
+      articleBinding:
+        mode: explicit_article
+        articleTitle: Instagram Widget
+        categoryTitle: Homepage Articles
+
+    # Alert bar (top of page)
     - section: top
       particleType: contentarray
       title: Alert
@@ -83,26 +307,31 @@ homepage:
         mode: category
         categoryTitle: Alerts
         total: 10
-    - section: feature
-      particleType: contentarray
-      title: News & Events
-      articleBinding:
-        mode: category
-        categoryTitle: News
-        total: 6
-    - section: utility
-      particleType: contentarray
-      title: Calendar
-      articleBinding:
-        mode: explicit_article
-        articleTitle: Homepage Calendar Block
-        categoryTitle: Homepage Articles
-        createIfMissing: true
-        generationNotes: |
-          Summarize the parish calendar and upcoming events with a concise intro.
-    - section: footer
-      particleType: custom
-      title: Admin Footer
-      contentBinding:
-        mode: manual_html
-        html: <p>Replace with generated or curated footer copy.</p>
+
+# ---------------------------------------------------------------------------
+# Phase 6 — Override CSS
+# ---------------------------------------------------------------------------
+overrideCss:
+  notes: |
+    The override.css file is the primary styling layer for this site.
+    Reference site (blank slate): https://studius.forge.solutiosoftware.com/content/override.css
+    Reference site (completed):   https://stgertrude-bay.solutiosoftware.com/content/override.css
+    - Use CSS custom properties defined in gantryBaseOutline.pageSettings.cssVariables
+      for all color and font references (var(--color-primary), etc.)
+    - Use the blockCssClass values from each particle above as your selectors.
+    - Never use <button> elements; always use <a class="button">.
+  sections:
+    - selector: .mass-schedule-widget
+      notes: Style the Mass Schedule content array to match the mockup hero-right layout.
+    - selector: .quicklinks-cards
+      notes: Style quicklink Block Content cards to match the mockup grid.
+    - selector: .news-feed
+      notes: Style the news Content Array for the sidebar column.
+    - selector: .facebook-feed
+      notes: Constrain width, add border/shadow as in mockup.
+    - selector: .links-section
+      notes: Style the expanded Block Content links row.
+    - selector: .calendar-feed
+      notes: Constrain iframe/embed width and add section title styling.
+    - selector: .instagram-feed
+      notes: Style Instagram embed to match the mockup column.
