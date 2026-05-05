@@ -1313,6 +1313,41 @@ const tools = [
     },
   },
   {
+    name: "joomla_gantry5_export_outline_blueprint",
+    description:
+      "Export a Gantry outline into a portable JSON or YAML blueprint that can be reused on another site. Can optionally save under local blueprints/ folder.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        outline: { type: "string", description: "Source outline ID. Defaults to default." },
+        theme: { type: "string", description: "Optional Gantry theme key. Defaults to rt_studius." },
+        format: { type: "string", enum: ["json", "yaml"], description: "Export format. Defaults to json." },
+        saveToFile: { type: "boolean", description: "When true, writes the blueprint to blueprints/." },
+        fileName: { type: "string", description: "Optional custom file name when saveToFile=true." },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "joomla_gantry5_import_outline_blueprint",
+    description:
+      "Import/apply a Gantry outline blueprint from object, text, or file path. Supports dry-run preview before live apply.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        outline: { type: "string", description: "Target outline ID override. Defaults to blueprint source outline." },
+        theme: { type: "string", description: "Target Gantry theme override. Defaults to blueprint source theme." },
+        blueprint: { type: "object", additionalProperties: true, description: "Blueprint object payload." },
+        blueprintText: { type: "string", description: "Blueprint JSON/YAML text payload." },
+        format: { type: "string", enum: ["json", "yaml"], description: "Format for blueprintText or ambiguous file extensions." },
+        filePath: { type: "string", description: "Local blueprint file path (relative to workspace or absolute)." },
+        dryRun: { type: "boolean", description: "Preview parsed/apply summary without saving." },
+        confirm: { type: "boolean", description: "Set true to apply live." },
+      },
+      required: [],
+    },
+  },
+  {
     name: "joomla_page_content",
     description:
       "Get raw HTML content of any admin page for debugging or exploration. Use the admin path like 'index.php?option=com_content&view=articles'.",
@@ -2401,6 +2436,34 @@ server.setRequestHandler(CallToolRequestSchema, async (request: { params: { name
         const result = await joomla.deleteGantry5LayoutNode((args?.outline as string) || "default", nodeId, {
           theme: args?.theme as string,
           dryRun: args?.dryRun as boolean,
+        });
+        return { content: [{ type: "text", text: formatResult(result) }], isError: !result.success };
+      }
+
+      case "joomla_gantry5_export_outline_blueprint": {
+        const login = await ensureLoggedIn();
+        if (!login.success) return { content: [{ type: "text", text: formatResult(login) }], isError: true };
+        const result = await joomla.exportGantry5OutlineBlueprint((args?.outline as string) || "default", {
+          theme: args?.theme as string,
+          format: args?.format as "json" | "yaml",
+          saveToFile: args?.saveToFile as boolean,
+          fileName: args?.fileName as string,
+        });
+        return { content: [{ type: "text", text: formatResult(result) }], isError: !result.success };
+      }
+
+      case "joomla_gantry5_import_outline_blueprint": {
+        const login = await ensureLoggedIn();
+        if (!login.success) return { content: [{ type: "text", text: formatResult(login) }], isError: true };
+        const result = await joomla.importGantry5OutlineBlueprint({
+          outline: args?.outline as string,
+          theme: args?.theme as string,
+          blueprint: args?.blueprint as Record<string, unknown>,
+          blueprintText: args?.blueprintText as string,
+          format: args?.format as "json" | "yaml",
+          filePath: args?.filePath as string,
+          dryRun: args?.dryRun as boolean,
+          confirm: args?.confirm as boolean,
         });
         return { content: [{ type: "text", text: formatResult(result) }], isError: !result.success };
       }

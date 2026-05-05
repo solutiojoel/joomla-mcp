@@ -82,6 +82,7 @@ Progress update (2026-04-29):
   - menu item publish/unpublish + check-in
   - module publish/unpublish + check-in
   - article/category check-in
+- Implemented (expanded): standardized response envelope and verification metadata for article/category create, update, and trash actions.
 
 ## Phase 2: Content Operations
 

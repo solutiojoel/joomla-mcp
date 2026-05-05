@@ -2,6 +2,7 @@ import "dotenv/config";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import yaml from "js-yaml";
 
 export interface JoomlaConfig {
   baseUrl: string;
@@ -357,6 +358,13 @@ export class JoomlaClient {
       verification: data.verification || { attempted: false },
       ...data,
     };
+  }
+
+  private findLatestByTitle(items: Array<Record<string, string>>, title: string): Record<string, string> | null {
+    for (let i = items.length - 1; i >= 0; i -= 1) {
+      if (items[i].title === title) return items[i];
+    }
+    return null;
   }
 
   private getCookieHeader(): string | null {
@@ -760,6 +768,10 @@ export class JoomlaClient {
 
   private getSnapshotDir(): string {
     return path.resolve(process.cwd(), "snapshots");
+  }
+
+  private getBlueprintDir(): string {
+    return path.resolve(process.cwd(), "blueprints");
   }
 
   private getSnapshotPath(snapshotId: string): string {
@@ -1713,17 +1725,37 @@ export class JoomlaClient {
 
     const result = await this.postPage(newArticleUrl, formData);
 
-    // Check for success indicators
-    const newToken = this.extractCsrfToken(result.html);
-    const successMsg = result.html.includes("Article saved") || result.html.includes("The article has been saved");
-    const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
+      const successMsg = result.html.includes("Article saved") || result.html.includes("The article has been saved");
+      const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
 
-    return {
-      success: successMsg,
-      message: successMsg ? "Article saved" : (errorMsg ? errorMsg[1].trim() : "Unknown result"),
-      html: result.html,
-    };
-  }
+      let createdId = "";
+      let actualState = data.state ?? "1";
+      let verifySuccess = false;
+
+      if (successMsg) {
+        const listed = await this.listArticles();
+        const found = this.findLatestByTitle((listed.data || []) as Array<Record<string, string>>, data.title);
+        if (found?.id) {
+          createdId = found.id;
+          actualState = found.state || actualState;
+          verifySuccess = true;
+        }
+      }
+
+      return {
+        success: successMsg && verifySuccess,
+        message: successMsg ? "Article saved" : (errorMsg ? errorMsg[1].trim() : "Unknown result"),
+        data: this.buildOperationData("article", createdId || "", {
+          title: data.title,
+          state: actualState,
+          verification: {
+            attempted: true,
+            createListedByTitle: verifySuccess,
+          },
+        }),
+        html: result.html,
+      };
+    }
 
   async updateArticle(
     id: string,
@@ -1760,16 +1792,35 @@ export class JoomlaClient {
       [token.name]: token.value,
     };
 
-    const result = await this.postPage(editUrl, formData);
-    const successMsg = result.html.includes("Article saved") || result.html.includes("The article has been saved");
-    const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
+      const result = await this.postPage(editUrl, formData);
+      const successMsg = result.html.includes("Article saved") || result.html.includes("The article has been saved");
+      const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
+      const verify = await this.getArticle(id);
+      const article = (verify.data || {}) as Record<string, string>;
+      const requestedTitle = data.title ?? existingArticle.title;
+      const requestedState = data.state ?? existingArticle.state;
+      const verified = verify.success
+        && article.title === requestedTitle
+        && article.state === requestedState;
 
-    return {
-      success: successMsg,
-      message: successMsg ? "Article saved" : (errorMsg ? errorMsg[1].trim() : "Unknown result"),
-      html: result.html,
-    };
-  }
+      return {
+        success: successMsg && verified,
+        message: successMsg ? "Article saved" : (errorMsg ? errorMsg[1].trim() : "Unknown result"),
+        data: this.buildOperationData("article", id, {
+          title: article.title || requestedTitle,
+          state: article.state || requestedState,
+          verification: {
+            attempted: true,
+            requestedTitle,
+            actualTitle: article.title || "",
+            requestedState,
+            actualState: article.state || "",
+            verified,
+          },
+        }),
+        html: result.html,
+      };
+    }
 
   async deleteArticle(id: string): Promise<JoomlaResponse> {
     const listUrl = this.getAdminUrl("index.php?option=com_content&view=articles");
@@ -1786,16 +1837,27 @@ export class JoomlaClient {
       [token.name]: token.value,
     };
 
-    const result = await this.postPage(listUrl, formData);
-    const successMsg = /article[s]?\s+(trashed|deleted)|has been (trashed|deleted)/i.test(result.html);
-    const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
+      const result = await this.postPage(listUrl, formData);
+      const successMsg = /article[s]?\s+(trashed|deleted)|has been (trashed|deleted)/i.test(result.html);
+      const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
+      const verify = await this.getArticle(id);
+      const article = (verify.data || {}) as Record<string, string>;
 
-    return {
-      success: successMsg,
-      message: successMsg ? "Article trashed" : (errorMsg ? errorMsg[1].trim() : "Unknown result"),
-      html: result.html,
-    };
-  }
+      return {
+        success: successMsg,
+        message: successMsg ? "Article trashed" : (errorMsg ? errorMsg[1].trim() : "Unknown result"),
+        data: this.buildOperationData("article", id, {
+          title: article.title || "",
+          state: article.state || "",
+          verification: {
+            attempted: true,
+            actionAccepted: successMsg,
+            stillLoadableByEdit: verify.success,
+          },
+        }),
+        html: result.html,
+      };
+    }
 
   async checkInArticle(id: string): Promise<JoomlaResponse> {
     const listUrl = this.getAdminUrl("index.php?option=com_content&view=articles");
@@ -1920,16 +1982,38 @@ export class JoomlaClient {
       [token.name]: token.value,
     };
 
-    const result = await this.postPage(newCatUrl, formData);
-    const successMsg = result.html.includes("Category saved") || result.html.includes("has been saved");
-    const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
+      const result = await this.postPage(newCatUrl, formData);
+      const successMsg = result.html.includes("Category saved") || result.html.includes("has been saved");
+      const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
 
-    return {
-      success: successMsg,
-      message: successMsg ? "Category saved" : (errorMsg ? errorMsg[1].trim() : "Unknown result"),
-      html: result.html,
-    };
-  }
+      let createdId = "";
+      let actualState = data.published ?? "1";
+      let verifySuccess = false;
+
+      if (successMsg) {
+        const listed = await this.listCategories(ext);
+        const found = this.findLatestByTitle((listed.data || []) as Array<Record<string, string>>, data.title);
+        if (found?.id) {
+          createdId = found.id;
+          actualState = found.state || actualState;
+          verifySuccess = true;
+        }
+      }
+
+      return {
+        success: successMsg && verifySuccess,
+        message: successMsg ? "Category saved" : (errorMsg ? errorMsg[1].trim() : "Unknown result"),
+        data: this.buildOperationData("category", createdId || "", {
+          title: data.title,
+          state: actualState,
+          verification: {
+            attempted: true,
+            createListedByTitle: verifySuccess,
+          },
+        }),
+        html: result.html,
+      };
+    }
 
   async updateCategory(
     id: string,
@@ -1962,16 +2046,35 @@ export class JoomlaClient {
       [token.name]: token.value,
     };
 
-    const result = await this.postPage(editUrl, formData);
-    const successMsg = result.html.includes("Category saved") || result.html.includes("has been saved");
-    const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
+      const result = await this.postPage(editUrl, formData);
+      const successMsg = result.html.includes("Category saved") || result.html.includes("has been saved");
+      const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
+      const verify = await this.getCategory(id);
+      const category = (verify.data || {}) as Record<string, string>;
+      const requestedTitle = data.title ?? existingCategory.title;
+      const requestedState = data.published ?? existingCategory.published;
+      const verified = verify.success
+        && category.title === requestedTitle
+        && category.published === requestedState;
 
-    return {
-      success: successMsg,
-      message: successMsg ? "Category saved" : (errorMsg ? errorMsg[1].trim() : "Unknown result"),
-      html: result.html,
-    };
-  }
+      return {
+        success: successMsg && verified,
+        message: successMsg ? "Category saved" : (errorMsg ? errorMsg[1].trim() : "Unknown result"),
+        data: this.buildOperationData("category", id, {
+          title: category.title || requestedTitle,
+          state: category.published || requestedState,
+          verification: {
+            attempted: true,
+            requestedTitle,
+            actualTitle: category.title || "",
+            requestedState,
+            actualState: category.published || "",
+            verified,
+          },
+        }),
+        html: result.html,
+      };
+    }
 
   private parseCategoryForm(html: string): Record<string, string> {
     const fields = this.extractFormFields(html);
@@ -2002,16 +2105,27 @@ export class JoomlaClient {
       [token.name]: token.value,
     };
 
-    const result = await this.postPage(listUrl, formData);
-    const successMsg = /categor(y|ies)\s+(trashed|deleted)|has been (trashed|deleted)/i.test(result.html);
-    const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
+      const result = await this.postPage(listUrl, formData);
+      const successMsg = /categor(y|ies)\s+(trashed|deleted)|has been (trashed|deleted)/i.test(result.html);
+      const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
+      const verify = await this.getCategory(id);
+      const category = (verify.data || {}) as Record<string, string>;
 
-    return {
-      success: successMsg,
-      message: successMsg ? "Category trashed" : (errorMsg ? errorMsg[1].trim() : "Unknown result"),
-      html: result.html,
-    };
-  }
+      return {
+        success: successMsg,
+        message: successMsg ? "Category trashed" : (errorMsg ? errorMsg[1].trim() : "Unknown result"),
+        data: this.buildOperationData("category", id, {
+          title: category.title || "",
+          state: category.published || "",
+          verification: {
+            attempted: true,
+            actionAccepted: successMsg,
+            stillLoadableByEdit: verify.success,
+          },
+        }),
+        html: result.html,
+      };
+    }
 
   async checkInCategory(id: string): Promise<JoomlaResponse> {
     const listUrl = this.getAdminUrl("index.php?option=com_categories&view=categories&extension=com_content");
@@ -2979,6 +3093,134 @@ export class JoomlaClient {
         tabs: this.parseGantryTabs(html),
         ajax: this.parseGantryAjaxVars(html),
         outlines,
+      },
+    };
+  }
+
+  async exportGantry5OutlineBlueprint(
+    outline = "default",
+    options: {
+      theme?: string;
+      format?: "json" | "yaml";
+      saveToFile?: boolean;
+      fileName?: string;
+    } = {}
+  ): Promise<JoomlaResponse> {
+    const layout = await this.getGantry5Layout(outline, { theme: options.theme, includeRaw: true });
+    if (!layout.success) return layout;
+    const data = (layout.data || {}) as Record<string, unknown>;
+    const root = (data.root || []) as GantryLayoutNode[];
+    const preset = data.preset;
+    const theme = this.getGantryThemeKey(options.theme);
+    const blueprint = {
+      kind: "gantry5-outline-blueprint",
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      source: {
+        theme,
+        outline,
+      },
+      layout: {
+        preset,
+        root,
+      },
+      summary: this.summarizeGantryLayout(root),
+    };
+
+    const format = (options.format || "json").toLowerCase() === "yaml" ? "yaml" : "json";
+    const serialized = format === "yaml"
+      ? yaml.dump(blueprint, { noRefs: true, lineWidth: 120 })
+      : JSON.stringify(blueprint, null, 2);
+
+    let filePath = "";
+    if (options.saveToFile) {
+      mkdirSync(this.getBlueprintDir(), { recursive: true });
+      const safeOutline = outline.replace(/[^a-zA-Z0-9_.-]/g, "_");
+      const ext = format === "yaml" ? "yaml" : "json";
+      const fileName = (options.fileName || `gantry-outline-${safeOutline}-${new Date().toISOString().replace(/[:.]/g, "-")}.${ext}`)
+        .replace(/[^a-zA-Z0-9_.-]/g, "_");
+      filePath = path.join(this.getBlueprintDir(), fileName);
+      writeFileSync(filePath, serialized, "utf8");
+    }
+
+    return {
+      success: true,
+      message: "Gantry outline blueprint exported",
+      data: {
+        format,
+        theme,
+        outline,
+        filePath,
+        blueprint,
+        serialized,
+      },
+    };
+  }
+
+  async importGantry5OutlineBlueprint(data: {
+    outline?: string;
+    theme?: string;
+    blueprint?: Record<string, unknown>;
+    blueprintText?: string;
+    format?: "json" | "yaml";
+    filePath?: string;
+    dryRun?: boolean;
+    confirm?: boolean;
+  }): Promise<JoomlaResponse> {
+    let blueprint = data.blueprint as Record<string, unknown> | undefined;
+
+    if (!blueprint && data.filePath) {
+      const fileText = readFileSync(path.resolve(process.cwd(), data.filePath), "utf8");
+      const fileFormat = (data.format || (data.filePath.toLowerCase().endsWith(".yaml") || data.filePath.toLowerCase().endsWith(".yml") ? "yaml" : "json")).toLowerCase();
+      blueprint = (fileFormat === "yaml" ? yaml.load(fileText) : JSON.parse(fileText)) as Record<string, unknown>;
+    }
+
+    if (!blueprint && data.blueprintText) {
+      const format = (data.format || "json").toLowerCase();
+      blueprint = (format === "yaml" ? yaml.load(data.blueprintText) : JSON.parse(data.blueprintText)) as Record<string, unknown>;
+    }
+
+    if (!blueprint || typeof blueprint !== "object") {
+      return { success: false, message: "blueprint, blueprintText, or filePath is required" };
+    }
+
+    const layout = (blueprint.layout || {}) as Record<string, unknown>;
+    const root = layout.root as unknown;
+    const preset = layout.preset;
+    if (!Array.isArray(root)) {
+      return { success: false, message: "Blueprint layout.root must be an array" };
+    }
+
+    const source = (blueprint.source || {}) as Record<string, unknown>;
+    const outline = data.outline || String(source.outline || "default");
+    const theme = data.theme || String(source.theme || "rt_studius");
+
+    if (data.dryRun || !data.confirm) {
+      return {
+        success: true,
+        message: data.dryRun ? "Dry run: Gantry outline blueprint parsed and ready" : "Blueprint parsed; set confirm=true to apply",
+        data: {
+          outline,
+          theme: this.getGantryThemeKey(theme),
+          summary: this.summarizeGantryLayout(root as GantryLayoutNode[]),
+          preset,
+        },
+      };
+    }
+
+    const save = await this.saveGantry5LayoutRaw(outline, {
+      root,
+      preset,
+      theme,
+    });
+
+    return {
+      success: save.success,
+      message: save.success ? "Gantry outline blueprint applied" : save.message,
+      data: {
+        outline,
+        theme: this.getGantryThemeKey(theme),
+        save: save.data,
       },
     };
   }

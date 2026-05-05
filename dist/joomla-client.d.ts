@@ -22,6 +22,7 @@ export declare class JoomlaClient {
     private resolveUrl;
     private buildEntityUrls;
     private buildOperationData;
+    private findLatestByTitle;
     private getCookieHeader;
     private parseSetCookie;
     private extractCsrfToken;
@@ -49,6 +50,7 @@ export declare class JoomlaClient {
     private getPage;
     private postPage;
     private getSnapshotDir;
+    private getBlueprintDir;
     private getSnapshotPath;
     private writeSnapshot;
     private readSnapshot;
@@ -299,6 +301,22 @@ export declare class JoomlaClient {
     private postGantryJson;
     private parseGantrySettingsFields;
     listGantry5Outlines(theme?: string): Promise<JoomlaResponse>;
+    exportGantry5OutlineBlueprint(outline?: string, options?: {
+        theme?: string;
+        format?: "json" | "yaml";
+        saveToFile?: boolean;
+        fileName?: string;
+    }): Promise<JoomlaResponse>;
+    importGantry5OutlineBlueprint(data: {
+        outline?: string;
+        theme?: string;
+        blueprint?: Record<string, unknown>;
+        blueprintText?: string;
+        format?: "json" | "yaml";
+        filePath?: string;
+        dryRun?: boolean;
+        confirm?: boolean;
+    }): Promise<JoomlaResponse>;
     getGantry5Layout(outline?: string, options?: {
         theme?: string;
         includeRaw?: boolean;

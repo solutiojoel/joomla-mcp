@@ -8,14 +8,22 @@
     "start": "tsx src/index.ts",
     "dev": "tsx watch src/index.ts",
     "smoke": "tsx smoke.ts",
-    "test:all-tools": "npm run build && tsx mcp-all-tools-test.ts"
+    "test:all-tools": "npm run build && tsx mcp-all-tools-test.ts",
+    "test:tools:content": "npm run build && cross-env TEST_SUITE=content tsx mcp-all-tools-test.ts",
+    "test:tools:modules": "npm run build && cross-env TEST_SUITE=modules tsx mcp-all-tools-test.ts",
+    "test:tools:gantry": "npm run build && cross-env TEST_SUITE=gantry tsx mcp-all-tools-test.ts",
+    "test:tools:menus": "npm run build && cross-env TEST_SUITE=menus tsx mcp-all-tools-test.ts",
+    "test:tools:admin": "npm run build && cross-env TEST_SUITE=admin tsx mcp-all-tools-test.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "dotenv": "^17.4.2"
+    "dotenv": "^17.4.2",
+    "js-yaml": "^4.1.1"
   },
   "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^25.6.0",
+    "cross-env": "^7.0.3",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3"
   }
