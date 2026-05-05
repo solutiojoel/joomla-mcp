@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { JoomlaClient } from "./src/joomla-client.js";
+import { JoomlaClient } from "../../src/joomla-client.js";
 
 const config = {
   baseUrl: process.env.JOOMLA_BASE_URL || "",

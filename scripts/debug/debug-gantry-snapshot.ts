@@ -9,11 +9,11 @@ import * as dotenv from "dotenv";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-dotenv.config({ path: join(__dirname, ".env") });
+dotenv.config({ path: join(__dirname, "..", "..", ".env") });
 
 const transport = new StdioClientTransport({
   command: "node",
-  args: [join(__dirname, "dist", "index.js")],
+  args: [join(__dirname, "..", "..", "dist", "index.js")],
   env: { ...process.env },
 });
 const client = new Client({ name: "debug-gantry", version: "1.0" });
@@ -49,13 +49,13 @@ console.log("Live root count:", live.data?.root?.length);
 
 // Load snapshot file
 import { readFileSync } from "fs";
-const snapshotFiles = (await import("fs")).readdirSync(join(__dirname, "..", "snapshots"));
+const snapshotFiles = (await import("fs")).readdirSync(join(__dirname, "..", "..", "snapshots"));
 const snapFile = snapshotFiles.find(f => f.includes(snapshotId?.split("T")[1]?.replace(/:/g, "-")?.split("Z")[0] || snapshotId));
 console.log("Snap file:", snapFile);
 
 if (snapshotId) {
   // Try to find the snapshot
-  const snapDir = join(__dirname, "..", "snapshots");
+  const snapDir = join(__dirname, "..", "..", "snapshots");
   const files = (await import("fs")).readdirSync(snapDir);
   const match = files.find(f => snapshotId && f.includes(snapshotId.replace(/:/g, "-").replace(/\./g, "-").replace(/T/, "T")));
   const matchExact = files.find(f => f.startsWith(snapshotId));

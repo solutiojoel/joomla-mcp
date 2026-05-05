@@ -181,3 +181,21 @@ The server currently exposes the following tools.
 ## Roadmap
 
 For phased capability expansion and priorities, see [docs/JOOMLA_MCP_ROADMAP.md](docs/JOOMLA_MCP_ROADMAP.md).
+
+## Repository Structure
+
+- `src/`: MCP server source code.
+- `dist/`: compiled server output.
+- `scripts/`: operational and development scripts grouped by purpose:
+  - `scripts/tests/`
+  - `scripts/build/`
+  - `scripts/menu/`
+  - `scripts/content/`
+  - `scripts/debug/`
+  - `scripts/manual/`
+  - `scripts/probes/`
+- `blueprints/`: Gantry and module blueprint YAML files.
+- `blueprints/layouts/`: saved Gantry base layout JSON exports.
+- `docs/`: process and roadmap documentation.
+- `snapshots/`: captured Joomla/Gantry snapshots used for diff/restore workflows.
+- `site-build-prompt-server/`: standalone MCP prompt/spec helper server.

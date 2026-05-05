@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { writeFileSync } from "node:fs";
-import { JoomlaClient } from "./src/joomla-client.js";
+import { JoomlaClient } from "../../src/joomla-client.js";
 
 async function main(): Promise<void> {
   const joomla = new JoomlaClient({

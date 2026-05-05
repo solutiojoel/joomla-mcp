@@ -8,12 +8,12 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: join(__dirname, ".env") });
+dotenv.config({ path: join(__dirname, "..", "..", ".env") });
 
 async function main() {
   const transport = new StdioClientTransport({
     command: "node",
-    args: [join(__dirname, "dist", "index.js")],
+    args: [join(__dirname, "..", "..", "dist", "index.js")],
     env: { ...process.env },
   });
   const client = new Client({ name: "debug-outlines", version: "1.0" });

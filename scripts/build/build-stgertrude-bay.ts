@@ -51,7 +51,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 // Load .env from the script's own directory regardless of process CWD
-dotenv.config({ path: join(__dirname, ".env") });
+dotenv.config({ path: join(__dirname, "..", "..", ".env") });
 
 // ---------------------------------------------------------------------------
 // SDK shims
@@ -788,7 +788,7 @@ async function main(): Promise<void> {
   const client = new Client({ name: "stgertrude-bay-build", version: "1.0.0" });
   const transport = new StdioClientTransport({
     command: "node",
-    args: [join(__dirname, "dist", "index.js")],
+    args: [join(__dirname, "..", "..", "dist", "index.js")],
     env: { ...process.env },
   });
   await client.connect(transport, { timeout: 180_000 });
