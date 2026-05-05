@@ -1,0 +1,76 @@
+version: 1
+site:
+  siteName: New Parish Site
+  siteCode: NPS
+  siteUrl: https://new-site.example
+  adminBaseUrl: https://new-site.example/administrator
+  menuTitle: Main Menu NPS
+  menuType: main-menu-nps
+  notes: Use this spec as the single source of truth for building the site.
+contentDefaults:
+  pageCategoryTitle: Page Content
+  homepageArticlesCategoryTitle: Homepage Articles
+  newsCategoryTitle: News
+  eventsCategoryTitle: Events
+menuItems:
+  - key: home
+    title: Home
+    alias: home
+    parentKey: ''
+    home: true
+    pageType: homepage
+    content:
+      mode: auto_generate
+      guidance: Summarize the parish mission, welcome visitors, and highlight Mass times.
+      sourceUrl: ''
+      sourceArticleId: ''
+      sourceArticleTitle: ''
+      sourceSiteLabel: ''
+      cleanupNotes: ''
+      html: ''
+    artworkNotes: Describe the homepage hero art direction, tone, crops, and visual hierarchy.
+    modules: []
+  - key: about
+    title: About
+    alias: about
+    parentKey: ''
+    home: false
+    pageType: article
+    content:
+      mode: pull_url
+      guidance: ''
+      sourceUrl: https://old-site.example/about
+      sourceArticleId: ''
+      sourceArticleTitle: ''
+      sourceSiteLabel: ''
+      cleanupNotes: Preserve parish history, staff names, and sacramental identity.
+      html: ''
+    artworkNotes: ''
+    modules: []
+moduleCatalog: []
+homepage:
+  sourceOutlineBlueprint: blueprints/home-outline-remap-test.yaml
+  artworkNotes: Describe hero artwork, iconography, photography style, and homepage composition.
+  particles:
+    - section: top
+      particleType: contentarray
+      title: Alert
+      articleBinding:
+        mode: category
+        categoryTitle: Alerts
+        articleTitle: ''
+        total: 10
+        createIfMissing: false
+        generationNotes: ''
+      notes: ''
+    - section: feature
+      particleType: contentarray
+      title: News & Events
+      articleBinding:
+        mode: category
+        categoryTitle: News
+        articleTitle: ''
+        total: 6
+        createIfMissing: false
+        generationNotes: ''
+      notes: ''

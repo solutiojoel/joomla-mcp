@@ -47,6 +47,32 @@ interface GantryLayoutNode {
   layout?: boolean;
 }
 
+interface GantryCategoryReference {
+  id: string;
+  title: string;
+}
+
+interface GantryArticleReference {
+  id: string;
+  title: string;
+  alias: string;
+  categoryId: string;
+  categoryTitle: string;
+  introtext: string;
+  fulltext: string;
+  state: string;
+  access: string;
+}
+
+interface GantryParticleReference {
+  particleId: string;
+  particleTitle: string;
+  particleType: string;
+  filterPath: string;
+  categories: GantryCategoryReference[];
+  articles: GantryArticleReference[];
+}
+
 interface AdminFieldDetails {
   name: string;
   id: string;
@@ -76,6 +102,36 @@ interface GantryParticleGuide {
 }
 
 type JoomlaEntity = "article" | "category" | "module" | "menuItem";
+
+interface ModuleBlueprint {
+  kind: "joomla-module-blueprint";
+  version: 1;
+  exportedAt: string;
+  source: {
+    id: string;
+    title: string;
+    moduleType: string;
+  };
+  module: {
+    title: string;
+    moduleType: string;
+    clientId: string;
+    position: string;
+    published: string;
+    access: string;
+    showtitle: string;
+    ordering: string;
+    style: string;
+    language: string;
+    note: string;
+    assignment: string;
+    assigned: string[];
+    content?: string;
+    params: Record<string, string>;
+    advanced: Record<string, string>;
+    fieldOverrides: Record<string, string>;
+  };
+}
 
 const GANTRY_PARTICLE_GUIDES: GantryParticleGuide[] = [
   {
@@ -284,6 +340,18 @@ export class JoomlaClient {
   private config: JoomlaConfig;
   private cookies: Map<string, string> = new Map();
   private tokenName: string | null = null;
+  /**
+   * Cached Gantry 5 configuration entry URL (including CSRF token).
+   * Populated on first successful navigation to the Gantry theme configure page
+   * and reused for all subsequent calls within the same process lifetime.
+   * This avoids the "stale snapshot" error caused by re-navigating to the
+   * themes page (which can refresh the token) between snapshot and save.
+   */
+  private gantryEntryUrl: string | null = null;
+  /** Per-outline layout URL cache: outline id → absolute URL. Once discovered, reused directly. */
+  private gantryOutlineLayoutUrls: Map<string, string> = new Map();
+  /** Per-outline layout root+preset cache. Populated on fetch; used to skip re-fetch in liveBefore check. Cleared on login and after successful save. */
+  private gantryLayoutRootCache: Map<string, { root: GantryLayoutNode[]; preset: unknown }> = new Map();
 
   constructor(config: JoomlaConfig) {
     this.config = config;
@@ -555,6 +623,41 @@ export class JoomlaClient {
     return `${introtext}<hr id="system-readmore" />${fulltext}`;
   }
 
+  private normalizeRichText(value: string): string {
+    return this.decodeHtmlEntities(String(value || ""))
+      .replace(/\r\n?/g, "\n")
+      .replace(/<hr\b[^>]*\bid=["']system-readmore["'][^>]*\/?>/gi, '<hr id="system-readmore" />')
+      .replace(/>\s+</g, "><")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  private isEquivalentRichText(actual: string, expected: string): boolean {
+    return this.normalizeRichText(actual) === this.normalizeRichText(expected);
+  }
+
+  private verifyAlias(actual: string, requested?: string): boolean {
+    if (requested && requested.trim()) {
+      return actual === requested;
+    }
+    return actual.trim().length > 0;
+  }
+
+  private shouldVerifyAssignedMembers(assignment: string): boolean {
+    return assignment === "1" || assignment === "-1";
+  }
+
+  private isDeletionVerified(stillListed: boolean, verify: JoomlaResponse, stateFieldNames: string[]): boolean {
+    if (stillListed) return false;
+    if (!verify.success) return true;
+    const record = (verify.data || {}) as Record<string, unknown>;
+    return stateFieldNames.some((fieldName) => String(record[fieldName] || "") === "-2");
+  }
+
+  private isCheckInVerified(successMsg: boolean, verify: JoomlaResponse, checkedOutCleared: boolean): boolean {
+    return verify.success && (checkedOutCleared || successMsg);
+  }
+
   private splitArticleText(articletext: string): { introtext: string; fulltext: string } {
     const readmore = /<hr\b[^>]*\bid=["']system-readmore["'][^>]*>/i;
     const parts = articletext.split(readmore);
@@ -770,8 +873,8 @@ export class JoomlaClient {
     return path.resolve(process.cwd(), "snapshots");
   }
 
-  private getBlueprintDir(): string {
-    return path.resolve(process.cwd(), "blueprints");
+  private getBlueprintDir(kind = ""): string {
+    return path.resolve(process.cwd(), "blueprints", kind);
   }
 
   private getSnapshotPath(snapshotId: string): string {
@@ -783,9 +886,10 @@ export class JoomlaClient {
     mkdirSync(this.getSnapshotDir(), { recursive: true });
     const id = `${new Date().toISOString().replace(/[:.]/g, "-")}-${String(data.kind || "snapshot")}-${randomUUID().slice(0, 8)}`;
     const snapshot = {
-      id,
-      createdAt: new Date().toISOString(),
       ...data,
+      id,
+      snapshotId: id,
+      createdAt: new Date().toISOString(),
     };
     const filePath = this.getSnapshotPath(id);
     writeFileSync(filePath, JSON.stringify(snapshot, null, 2), "utf8");
@@ -961,6 +1065,75 @@ export class JoomlaClient {
     return "";
   }
 
+  private getStableFormIdentity(values: Record<string, string>): Record<string, string> {
+    const identityKeys = [
+      "id",
+      "jform[id]",
+      "jform[module]",
+      "jform[client_id]",
+      "jform[menutype]",
+      "jform[type]",
+      "jform[extension]",
+      "jform[catid]",
+      "jform[parent_id]",
+      "option",
+      "view",
+      "layout",
+    ];
+    const identity: Record<string, string> = {};
+    for (const key of identityKeys) {
+      if (typeof values[key] === "string" && values[key] !== "") {
+        identity[key] = values[key];
+      }
+    }
+    return identity;
+  }
+
+  private getRestorableVerificationFields(values: Record<string, string>): Record<string, string> {
+    const allowedExactKeys = new Set([
+      "jform[title]",
+      "jform[alias]",
+      "jform[note]",
+      "jform[articletext]",
+      "jform[description]",
+      "jform[content]",
+      "jform[catid]",
+      "jform[parent_id]",
+      "jform[state]",
+      "jform[published]",
+      "jform[access]",
+      "jform[language]",
+      "jform[module]",
+      "jform[client_id]",
+      "jform[position]",
+      "jform[showtitle]",
+      "jform[ordering]",
+      "jform[style]",
+      "jform[assignment]",
+      "jform[menutype]",
+      "jform[type]",
+      "jform[link]",
+      "jform[browserNav]",
+      "jform[home]",
+      "jform[publish_up]",
+      "jform[publish_down]",
+    ]);
+    const allowedPrefixes = ["jform[request][", "jform[params][", "jform[advanced]["];
+    const result: Record<string, string> = {};
+    for (const [key, value] of Object.entries(values || {})) {
+      if (!allowedExactKeys.has(key) && !allowedPrefixes.some((prefix) => key.startsWith(prefix))) continue;
+      result[key] = value;
+    }
+    return result;
+  }
+
+  private matchesVerificationField(key: string, actualValue: string, expectedValue: string): boolean {
+    if (key === "jform[articletext]" || key === "jform[description]" || key === "jform[content]") {
+      return this.isEquivalentRichText(actualValue, expectedValue);
+    }
+    return String(actualValue || "") === String(expectedValue || "");
+  }
+
   // ==================== BACKEND DISCOVERY / SAFETY ====================
 
   async backendInventory(): Promise<JoomlaResponse> {
@@ -1049,6 +1222,9 @@ export class JoomlaClient {
     task?: string;
     dryRun?: boolean;
     confirm?: boolean;
+    expectedAction?: string;
+    expectedIdentity?: Record<string, string>;
+    verifyFields?: Record<string, string>;
   }): Promise<JoomlaResponse> {
     const url = this.adminPathToUrl(pathOrUrl);
     const { html, token } = await this.getPage(url);
@@ -1057,6 +1233,36 @@ export class JoomlaClient {
     if (!form) return { success: false, message: "No matching form found" };
 
     const fields = (form.values || {}) as Record<string, string>;
+    const action = this.formActionToUrl(String(form.action || ""), url);
+    const currentIdentity = this.getStableFormIdentity(fields);
+    if (data.expectedAction && action !== this.resolveUrl(data.expectedAction)) {
+      return {
+        success: false,
+        message: `Refusing to submit form because the current action no longer matches the snapshot target`,
+        data: {
+          path: pathOrUrl,
+          expectedAction: this.resolveUrl(data.expectedAction),
+          actualAction: action,
+        },
+      };
+    }
+    if (data.expectedIdentity) {
+      for (const [key, expectedValue] of Object.entries(data.expectedIdentity)) {
+        if (String(currentIdentity[key] || "") !== String(expectedValue || "")) {
+          return {
+            success: false,
+            message: `Refusing to submit form because the current target no longer matches the snapshot identity`,
+            data: {
+              path: pathOrUrl,
+              key,
+              expectedValue,
+              actualValue: String(currentIdentity[key] || ""),
+            },
+          };
+        }
+      }
+    }
+
     const payload: Record<string, string> = {
       ...fields,
       ...(data.overrides || {}),
@@ -1064,13 +1270,11 @@ export class JoomlaClient {
     if (data.task) payload.task = data.task;
     if (token) payload[token.name] = token.value;
     else if (this.tokenName) payload[this.tokenName] = "1";
-
-    const action = this.formActionToUrl(String(form.action || ""), url);
     if (data.dryRun || !data.confirm) {
       return {
         success: true,
         message: data.dryRun ? "Dry run: form payload prepared" : "Form payload prepared; set confirm=true to submit",
-        data: { path: pathOrUrl, action, method: form.method, payload },
+        data: { path: pathOrUrl, action, method: form.method, payload, expectedIdentity: data.expectedIdentity || null },
       };
     }
 
@@ -1079,11 +1283,28 @@ export class JoomlaClient {
       body: this.getFormUrlEncoded(payload),
       contentType: "application/x-www-form-urlencoded",
     });
-    const success = /saved|success|updated|created|published|unpublished/i.test(result.body) && !/alert-error|alert-danger/i.test(result.body);
+    const successMsg = /saved|success|updated|created|published|unpublished/i.test(result.body) && !/alert-error|alert-danger/i.test(result.body);
+    const verify = await this.inspectAdminForm(pathOrUrl, data.formId);
+    const verifyData = (verify.data || {}) as Record<string, unknown>;
+    const verifyForms = (verifyData.forms || []) as Array<Record<string, unknown>>;
+    const verifyForm = verifyForms[0];
+    const verifyValues = ((verifyForm?.values || {}) as Record<string, string>);
+    const verification = {
+      attempted: true,
+      readbackSucceeded: verify.success && !!verifyForm,
+      fieldsMatched: !!verifyForm && Object.entries(data.verifyFields || {}).every(([key, expectedValue]) => this.matchesVerificationField(key, String(verifyValues[key] || ""), String(expectedValue || ""))),
+      successMsg,
+    };
+    const success = verification.readbackSucceeded && verification.fieldsMatched;
     return {
       success,
-      message: success ? "Form submitted" : "Form submitted; verify result",
-      data: { status: result.status, action, task: payload.task || "" },
+      message: success ? "Form submitted" : successMsg ? "Form submitted, but readback verification failed" : "Form submitted; verify result",
+      data: {
+        status: result.status,
+        action,
+        task: payload.task || "",
+        verification,
+      },
       html: result.body.substring(0, 50000),
     };
   }
@@ -1118,7 +1339,7 @@ export class JoomlaClient {
       const inspected = await this.inspectAdminForm(targetPath, data.formId);
       snapshotData = {
         kind,
-        id: data.id || "",
+        targetId: data.id || "",
         path: targetPath,
         formId: data.formId || "",
         restoreTask: this.inferRestoreTask(kind, targetPath),
@@ -1130,7 +1351,10 @@ export class JoomlaClient {
     return {
       success: true,
       message: "Snapshot saved",
-      data: snapshot,
+      data: {
+        ...snapshot,
+        snapshotId: String(snapshot.id || ""),
+      },
     };
   }
 
@@ -1150,6 +1374,7 @@ export class JoomlaClient {
       return this.saveGantry5LayoutRaw(String(snapshot.outline || "default"), {
         root: payload.root || (payload.layout as Record<string, unknown> | undefined)?.root,
         preset: payload.preset,
+        snapshotId,
         theme: String(snapshot.theme || "rt_studius"),
       });
     }
@@ -1158,11 +1383,15 @@ export class JoomlaClient {
     const forms = ((payload as Record<string, unknown>).forms || []) as Array<Record<string, unknown>>;
     const form = forms[0];
     if (!form) return { success: false, message: "Snapshot does not contain a restorable form" };
+    const snapshotValues = (form.values || {}) as Record<string, string>;
     return this.submitAdminForm(String(snapshot.path || ""), {
       formId: String(snapshot.formId || form.id || ""),
-      overrides: form.values as Record<string, string>,
+      overrides: snapshotValues,
       task: options.task || String(snapshot.restoreTask || ""),
       confirm: true,
+      expectedAction: String(form.action || ""),
+      expectedIdentity: this.getStableFormIdentity(snapshotValues),
+      verifyFields: this.getRestorableVerificationFields(snapshotValues),
     });
   }
 
@@ -1307,6 +1536,168 @@ export class JoomlaClient {
   private async findCategoryByTitle(title: string): Promise<Record<string, string> | null> {
     const categories = await this.listCategories("com_content");
     return ((categories.data || []) as Array<Record<string, string>>).find((category) => category.title === title) || null;
+  }
+
+  private async ensureCategoryByTitle(title: string): Promise<Record<string, string> | null> {
+    if (!title) return null;
+    const existing = await this.findCategoryByTitle(title);
+    if (existing) return existing;
+    const created = await this.createCategory({ title, published: "1" });
+    if (!created.success) return null;
+    return this.findCategoryByTitle(title);
+  }
+
+  private async findArticleByTitle(title: string, categoryTitle?: string): Promise<Record<string, string> | null> {
+    const articles = await this.listArticles();
+    const items = (articles.data || []) as Array<Record<string, string>>;
+    return items.find((article) => article.title === title && (!categoryTitle || article.category === categoryTitle)) || null;
+  }
+
+  private parseIdList(value: unknown): string[] {
+    if (typeof value !== "string") return [];
+    return value.split(",").map((item) => item.trim()).filter(Boolean);
+  }
+
+  private stringifyIdList(values: string[]): string {
+    return values.filter(Boolean).join(",");
+  }
+
+  private async collectGantryParticleReferences(root: GantryLayoutNode[]): Promise<GantryParticleReference[]> {
+    const references: GantryParticleReference[] = [];
+    const categoryCache = new Map<string, GantryCategoryReference | null>();
+    const articleCache = new Map<string, GantryArticleReference | null>();
+
+    const getCategoryRef = async (id: string): Promise<GantryCategoryReference | null> => {
+      if (categoryCache.has(id)) return categoryCache.get(id) || null;
+      const category = await this.getCategory(id);
+      const data = (category.data || {}) as Record<string, string>;
+      const ref = category.success ? { id, title: String(data.title || "") } : null;
+      categoryCache.set(id, ref);
+      return ref;
+    };
+
+    const getArticleRef = async (id: string): Promise<GantryArticleReference | null> => {
+      if (articleCache.has(id)) return articleCache.get(id) || null;
+      const article = await this.getArticle(id);
+      const data = (article.data || {}) as Record<string, string>;
+      const ref = article.success ? {
+        id,
+        title: String(data.title || ""),
+        alias: String(data.alias || ""),
+        categoryId: String(data.categoryId || ""),
+        categoryTitle: String(data.categoryName || ""),
+        introtext: String(data.introtext || ""),
+        fulltext: String(data.fulltext || ""),
+        state: String(data.state || "1"),
+        access: String(data.access || "1"),
+      } : null;
+      articleCache.set(id, ref);
+      return ref;
+    };
+
+    const visit = async (node: GantryLayoutNode, path: string[]): Promise<void> => {
+      const nodePath = [...path, node.id || node.type || "node"];
+      if (node.type === "particle") {
+        const articleConfig = (node.attributes || {}).article as Record<string, unknown> | undefined;
+        const filter = articleConfig?.filter as Record<string, unknown> | undefined;
+        const categoryIds = this.parseIdList(filter?.categories);
+        const articleIds = this.parseIdList(filter?.articles);
+        if (categoryIds.length || articleIds.length) {
+          const categories = (await Promise.all(categoryIds.map((id) => getCategoryRef(id)))).filter((item): item is GantryCategoryReference => !!item);
+          const articles = (await Promise.all(articleIds.map((id) => getArticleRef(id)))).filter((item): item is GantryArticleReference => !!item);
+          references.push({
+            particleId: String(node.id || ""),
+            particleTitle: String(node.title || ""),
+            particleType: String(node.subtype || ""),
+            filterPath: `${nodePath.join(" > ")}.attributes.article.filter`,
+            categories,
+            articles,
+          });
+        }
+      }
+      for (const child of node.children || []) await visit(child, nodePath);
+    };
+
+    for (const node of root) await visit(node, []);
+    return references;
+  }
+
+  private async remapGantryParticleReferences(
+    root: GantryLayoutNode[],
+    references: GantryParticleReference[],
+    options: { dryRun?: boolean } = {}
+  ): Promise<{ root: GantryLayoutNode[]; actions: Array<Record<string, unknown>> }> {
+    const actions: Array<Record<string, unknown>> = [];
+    const categoryMap = new Map<string, string>();
+    const articleMap = new Map<string, string>();
+
+    for (const reference of references) {
+      for (const category of reference.categories) {
+        if (categoryMap.has(category.id)) continue;
+        const existing = await this.findCategoryByTitle(category.title);
+        const target = existing || (options.dryRun ? null : await this.ensureCategoryByTitle(category.title));
+        if (target?.id) {
+          categoryMap.set(category.id, target.id);
+          actions.push({ type: "mapCategory", sourceId: category.id, sourceTitle: category.title, targetId: target.id });
+        } else if (options.dryRun) {
+          actions.push({ type: "mapCategory", sourceId: category.id, sourceTitle: category.title, wouldCreateCategory: true });
+        }
+      }
+      for (const article of reference.articles) {
+        if (articleMap.has(article.id)) continue;
+        const existing = await this.findArticleByTitle(article.title, article.categoryTitle || "Homepage Articles");
+        if (existing?.id) {
+          articleMap.set(article.id, existing.id);
+          actions.push({ type: "mapArticle", sourceId: article.id, sourceTitle: article.title, targetId: existing.id, created: false });
+          continue;
+        }
+
+        if (options.dryRun) {
+          actions.push({
+            type: "mapArticle",
+            sourceId: article.id,
+            sourceTitle: article.title,
+            wouldCreateArticle: true,
+            category: "Homepage Articles",
+          });
+          continue;
+        }
+
+        const homepageCategory = await this.ensureCategoryByTitle("Homepage Articles");
+        if (!homepageCategory?.id) continue;
+        const created = await this.createArticle({
+          title: article.title,
+          alias: article.alias,
+          categoryId: homepageCategory.id,
+          introtext: article.introtext,
+          fulltext: article.fulltext,
+          state: article.state || "1",
+          access: article.access || "1",
+        });
+        const createdId = String(((created.data || {}) as Record<string, unknown>).id || "");
+        if (created.success && createdId) {
+          articleMap.set(article.id, createdId);
+          actions.push({ type: "mapArticle", sourceId: article.id, sourceTitle: article.title, targetId: createdId, created: true, category: "Homepage Articles" });
+        }
+      }
+    }
+
+    const visit = (node: GantryLayoutNode): void => {
+      if (node.type === "particle") {
+        const articleConfig = (node.attributes || {}).article as Record<string, unknown> | undefined;
+        const filter = articleConfig?.filter as Record<string, unknown> | undefined;
+        if (filter) {
+          const categoryIds = this.parseIdList(filter.categories).map((id) => categoryMap.get(id) || id);
+          const articleIds = this.parseIdList(filter.articles).map((id) => articleMap.get(id) || id);
+          filter.categories = this.stringifyIdList(categoryIds);
+          filter.articles = this.stringifyIdList(articleIds);
+        }
+      }
+      for (const child of node.children || []) visit(child);
+    };
+
+    for (const node of root) visit(node);
+    return { root, actions };
   }
 
   async applySiteBuild(data: {
@@ -1512,15 +1903,52 @@ export class JoomlaClient {
 
   async createMediaFolder(data: { folderName: string; folderBase?: string; path?: string; dryRun?: boolean; confirm?: boolean }): Promise<JoomlaResponse> {
     if (!data.folderName) return { success: false, message: "folderName is required" };
-    return this.submitAdminForm(data.path || "index.php?option=com_media", {
+    const path = data.path || "index.php?option=com_media";
+    if (data.dryRun || !data.confirm) {
+      return this.submitAdminForm(path, {
+        overrides: {
+          foldername: data.folderName,
+          folderbase: data.folderBase || "",
+        },
+        task: "folder.create",
+        dryRun: data.dryRun ?? !data.confirm,
+        confirm: data.confirm,
+      });
+    }
+
+    const submitted = await this.submitAdminForm(path, {
       overrides: {
         foldername: data.folderName,
         folderbase: data.folderBase || "",
       },
       task: "folder.create",
-      dryRun: data.dryRun ?? !data.confirm,
-      confirm: data.confirm,
+      confirm: true,
     });
+    if (!submitted.success) return submitted;
+
+    const listing = await this.mediaList(data.folderBase || "index.php?option=com_media");
+    const listingData = (listing.data || {}) as Record<string, unknown>;
+    const links = ((listingData.links || []) as Array<Record<string, string>>);
+    const folderMatch = links.some((link) =>
+      String(link.label || "") === data.folderName
+      || decodeURIComponent(String(link.href || "")).includes(`/${data.folderName}`)
+      || decodeURIComponent(String(link.href || "")).includes(`folder=${data.folderName}`)
+    ) || (listing.html || "").includes(data.folderName);
+
+    return {
+      success: folderMatch,
+      message: folderMatch ? "Media folder created" : "Media folder create submitted, but the new folder was not verified in the media listing",
+      data: {
+        ...(submitted.data || {}),
+        folderName: data.folderName,
+        folderBase: data.folderBase || "",
+        verification: {
+          attempted: true,
+          listedAfterCreate: folderMatch,
+        },
+      },
+      html: submitted.html,
+    };
   }
 
   async listSponsors(): Promise<JoomlaResponse> {
@@ -1554,6 +1982,10 @@ export class JoomlaClient {
   // ==================== AUTH ====================
 
   async login(): Promise<JoomlaResponse> {
+    // Clear any cached Gantry URLs so a fresh login always starts fresh
+    this.gantryEntryUrl = null;
+    this.gantryOutlineLayoutUrls.clear();
+    this.gantryLayoutRootCache.clear();
     const loginUrl = this.getAdminUrl();
     const result = await this.getPage(loginUrl);
     const token = this.extractCsrfToken(result.html);
@@ -1653,6 +2085,7 @@ export class JoomlaClient {
           title,
           state: this.extractPublishedState(row),
           category: catMatch ? this.stripHtml(catMatch[1]) : "Unknown",
+          checkedOut: /checked[-_ ]?out|icon-lock|fa-lock/i.test(row) ? "1" : "0",
         });
       }
     }
@@ -1725,36 +2158,44 @@ export class JoomlaClient {
 
     const result = await this.postPage(newArticleUrl, formData);
 
-      const successMsg = result.html.includes("Article saved") || result.html.includes("The article has been saved");
-      const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
+    const successMsg = result.html.includes("Article saved") || result.html.includes("The article has been saved");
+    const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
 
-      let createdId = "";
-      let actualState = data.state ?? "1";
-      let verifySuccess = false;
+    let createdId = "";
+    if (successMsg) {
+      const listed = await this.listArticles();
+      const found = this.findLatestByTitle((listed.data || []) as Array<Record<string, string>>, data.title);
+      createdId = found?.id || "";
+    }
+    const verify = createdId ? await this.getArticle(createdId) : null;
+    const article = ((verify?.data || {}) as Record<string, string>);
+    const expectedArticleText = this.buildArticleText(data.introtext || "", data.fulltext || "");
+    const verification = {
+      attempted: true,
+      foundInList: !!createdId,
+      readbackSucceeded: !!verify?.success,
+      titleMatches: !!verify?.success && article.title === data.title,
+      aliasMatches: !!verify?.success && this.verifyAlias(String(article.alias || ""), data.alias),
+      categoryMatches: !!verify?.success && article.categoryId === data.categoryId,
+      stateMatches: !!verify?.success && article.state === String(data.state ?? "1"),
+      accessMatches: !!verify?.success && article.access === String(data.access ?? "1"),
+      articleTextMatches: !!verify?.success && this.isEquivalentRichText(String(article.articletext || ""), expectedArticleText),
+    };
+    const verified = Object.values(verification).every((value) => value === true);
 
-      if (successMsg) {
-        const listed = await this.listArticles();
-        const found = this.findLatestByTitle((listed.data || []) as Array<Record<string, string>>, data.title);
-        if (found?.id) {
-          createdId = found.id;
-          actualState = found.state || actualState;
-          verifySuccess = true;
-        }
-      }
-
-      return {
-        success: successMsg && verifySuccess,
-        message: successMsg ? "Article saved" : (errorMsg ? errorMsg[1].trim() : "Unknown result"),
-        data: this.buildOperationData("article", createdId || "", {
-          title: data.title,
-          state: actualState,
-          verification: {
-            attempted: true,
-            createListedByTitle: verifySuccess,
-          },
-        }),
-        html: result.html,
-      };
+    return {
+      success: verified,
+      message: verified ? "Article saved" : (errorMsg ? errorMsg[1].trim() : successMsg ? "Article save submitted, but creation was not verified" : "Unknown result"),
+      data: this.buildOperationData("article", createdId || "", {
+        title: article.title || data.title,
+        state: article.state || String(data.state ?? "1"),
+        verification: {
+          ...verification,
+          verified,
+        },
+      }),
+      html: result.html,
+    };
     }
 
   async updateArticle(
@@ -1792,37 +2233,55 @@ export class JoomlaClient {
       [token.name]: token.value,
     };
 
-      const result = await this.postPage(editUrl, formData);
-      const successMsg = result.html.includes("Article saved") || result.html.includes("The article has been saved");
-      const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
-      const verify = await this.getArticle(id);
-      const article = (verify.data || {}) as Record<string, string>;
-      const requestedTitle = data.title ?? existingArticle.title;
-      const requestedState = data.state ?? existingArticle.state;
-      const verified = verify.success
-        && article.title === requestedTitle
-        && article.state === requestedState;
+    const result = await this.postPage(editUrl, formData);
+    const successMsg = result.html.includes("Article saved") || result.html.includes("The article has been saved");
+    const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
+    const verify = await this.getArticle(id);
+    const article = (verify.data || {}) as Record<string, string>;
+    const expectedTitle = String(formData["jform[title]"] || "");
+    const expectedAlias = String(formData["jform[alias]"] || "");
+    const expectedCategoryId = String(formData["jform[catid]"] || "");
+    const expectedArticleText = String(formData["jform[articletext]"] || "");
+    const expectedState = String(formData["jform[state]"] || "");
+    const expectedAccess = String(formData["jform[access]"] || "");
+    const verification = {
+      attempted: true,
+      readbackSucceeded: verify.success,
+      titleMatches: verify.success && article.title === expectedTitle,
+      aliasMatches: verify.success && article.alias === expectedAlias,
+      categoryMatches: verify.success && article.categoryId === expectedCategoryId,
+      articleTextMatches: verify.success && this.isEquivalentRichText(String(article.articletext || ""), expectedArticleText),
+      stateMatches: verify.success && article.state === expectedState,
+      accessMatches: verify.success && article.access === expectedAccess,
+    };
+    const verified = Object.values(verification).every((value) => value === true);
 
-      return {
-        success: successMsg && verified,
-        message: successMsg ? "Article saved" : (errorMsg ? errorMsg[1].trim() : "Unknown result"),
-        data: this.buildOperationData("article", id, {
-          title: article.title || requestedTitle,
-          state: article.state || requestedState,
-          verification: {
-            attempted: true,
-            requestedTitle,
-            actualTitle: article.title || "",
-            requestedState,
-            actualState: article.state || "",
-            verified,
-          },
-        }),
-        html: result.html,
-      };
+    return {
+      success: verified,
+      message: verified ? "Article saved" : (errorMsg ? errorMsg[1].trim() : successMsg ? "Article save submitted, but updated values were not verified" : "Unknown result"),
+      data: this.buildOperationData("article", id, {
+        title: article.title || expectedTitle,
+        state: article.state || expectedState,
+        verification: {
+          ...verification,
+          verified,
+        },
+      }),
+      html: result.html,
+    };
     }
 
-  async deleteArticle(id: string): Promise<JoomlaResponse> {
+  async deleteArticle(id: string, options: { expectedTitle?: string } = {}): Promise<JoomlaResponse> {
+    const before = await this.getArticle(id);
+    const articleBefore = (before.data || {}) as Record<string, string>;
+    const title = articleBefore.title || "";
+    if (!before.success) {
+      return { success: false, message: `Refusing to delete article ${id} because the current target could not be verified` };
+    }
+    if (options.expectedTitle && title !== options.expectedTitle) {
+      return { success: false, message: `Refusing to delete article ${id}: expected title ${options.expectedTitle}, found ${title}` };
+    }
+
     const listUrl = this.getAdminUrl("index.php?option=com_content&view=articles");
     const { html } = await this.getPage(listUrl);
     const token = this.extractCsrfToken(html);
@@ -1837,29 +2296,44 @@ export class JoomlaClient {
       [token.name]: token.value,
     };
 
-      const result = await this.postPage(listUrl, formData);
-      const successMsg = /article[s]?\s+(trashed|deleted)|has been (trashed|deleted)/i.test(result.html);
-      const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
-      const verify = await this.getArticle(id);
-      const article = (verify.data || {}) as Record<string, string>;
+    const result = await this.postPage(listUrl, formData);
+    const successMsg = /article[s]?\s+(trashed|deleted)|has been (trashed|deleted)/i.test(result.html);
+    const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
+    const listResult = await this.listArticles();
+    const articles = Array.isArray(listResult.data) ? listResult.data as Array<Record<string, string>> : [];
+    const stillListed = articles.some((entry) => entry.id === id);
+    const verify = await this.getArticle(id);
+    const verified = !stillListed && (successMsg || this.isDeletionVerified(stillListed, verify, ["published", "state"]));
 
-      return {
-        success: successMsg,
-        message: successMsg ? "Article trashed" : (errorMsg ? errorMsg[1].trim() : "Unknown result"),
-        data: this.buildOperationData("article", id, {
-          title: article.title || "",
-          state: article.state || "",
-          verification: {
-            attempted: true,
-            actionAccepted: successMsg,
-            stillLoadableByEdit: verify.success,
-          },
-        }),
-        html: result.html,
-      };
+    return {
+      success: verified,
+      message: verified ? "Article trashed" : (errorMsg ? errorMsg[1].trim() : successMsg ? "Article trash submitted, but deletion was not verified" : "Unknown result"),
+      data: this.buildOperationData("article", id, {
+        title,
+        state: "-2",
+        verification: {
+          attempted: true,
+          preflightVerified: true,
+          stillListed,
+          readbackSucceeded: verify.success,
+          verified,
+        },
+      }),
+      html: result.html,
+    };
     }
 
-  async checkInArticle(id: string): Promise<JoomlaResponse> {
+  async checkInArticle(id: string, options: { expectedTitle?: string } = {}): Promise<JoomlaResponse> {
+    const before = await this.getArticle(id);
+    const articleBefore = (before.data || {}) as Record<string, string>;
+    const title = articleBefore.title || "";
+    if (!before.success) {
+      return { success: false, message: `Refusing to check in article ${id} because the current target could not be verified` };
+    }
+    if (options.expectedTitle && title !== options.expectedTitle) {
+      return { success: false, message: `Refusing to check in article ${id}: expected title ${options.expectedTitle}, found ${title}` };
+    }
+
     const listUrl = this.getAdminUrl("index.php?option=com_content&view=articles");
     const { html } = await this.getPage(listUrl);
     const token = this.extractCsrfToken(html);
@@ -1879,17 +2353,24 @@ export class JoomlaClient {
 
     const verify = await this.getArticle(id);
     const article = (verify.data || {}) as Record<string, unknown>;
-    const ok = (successMsg || !errorMsg) && verify.success;
+    const listed = await this.listArticles();
+    const listedArticles = (listed.data || []) as Array<Record<string, string>>;
+    const listedArticle = listedArticles.find((entry) => entry.id === id);
+    const checkedOutCleared = !!listedArticle && listedArticle.checkedOut !== "1";
+    const ok = this.isCheckInVerified(successMsg, verify, checkedOutCleared);
 
     return {
       success: ok,
-      message: ok ? "Article checked in" : (errorMsg ? errorMsg[1].trim() : "Article check-in submitted"),
+      message: ok ? "Article checked in" : (errorMsg ? errorMsg[1].trim() : successMsg ? "Article check-in submitted, but checkout state was not verified as cleared" : "Article check-in submitted"),
       data: this.buildOperationData("article", id, {
-        title: String(article.title || ""),
+        title: String(article.title || title),
         state: String(article.state || ""),
         verification: {
           attempted: true,
+          preflightVerified: true,
           existsAfterCheckIn: verify.success,
+          listedAfterCheckIn: !!listedArticle,
+          checkedOutCleared,
         },
       }),
       html: result.html,
@@ -1924,6 +2405,7 @@ export class JoomlaClient {
             title,
             state: this.extractPublishedState(row),
             parent: "Root",
+            checkedOut: /checked[-_ ]?out|icon-lock|fa-lock/i.test(row) ? "1" : "0",
           });
         }
       }
@@ -1982,37 +2464,43 @@ export class JoomlaClient {
       [token.name]: token.value,
     };
 
-      const result = await this.postPage(newCatUrl, formData);
-      const successMsg = result.html.includes("Category saved") || result.html.includes("has been saved");
-      const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
+    const result = await this.postPage(newCatUrl, formData);
+    const successMsg = result.html.includes("Category saved") || result.html.includes("has been saved");
+    const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
 
-      let createdId = "";
-      let actualState = data.published ?? "1";
-      let verifySuccess = false;
+    let createdId = "";
+    if (successMsg) {
+      const listed = await this.listCategories(ext);
+      const found = this.findLatestByTitle((listed.data || []) as Array<Record<string, string>>, data.title);
+      createdId = found?.id || "";
+    }
+    const verify = createdId ? await this.getCategory(createdId) : null;
+    const category = ((verify?.data || {}) as Record<string, string>);
+    const verification = {
+      attempted: true,
+      foundInList: !!createdId,
+      readbackSucceeded: !!verify?.success,
+      titleMatches: !!verify?.success && category.title === data.title,
+      aliasMatches: !!verify?.success && this.verifyAlias(String(category.alias || ""), data.alias),
+      parentMatches: !!verify?.success && category.parentId === String(data.parentId || "1"),
+      descriptionMatches: !!verify?.success && this.isEquivalentRichText(String(category.description || ""), String(data.description || "")),
+      publishedMatches: !!verify?.success && category.published === String(data.published ?? "1"),
+    };
+    const verified = Object.values(verification).every((value) => value === true);
 
-      if (successMsg) {
-        const listed = await this.listCategories(ext);
-        const found = this.findLatestByTitle((listed.data || []) as Array<Record<string, string>>, data.title);
-        if (found?.id) {
-          createdId = found.id;
-          actualState = found.state || actualState;
-          verifySuccess = true;
-        }
-      }
-
-      return {
-        success: successMsg && verifySuccess,
-        message: successMsg ? "Category saved" : (errorMsg ? errorMsg[1].trim() : "Unknown result"),
-        data: this.buildOperationData("category", createdId || "", {
-          title: data.title,
-          state: actualState,
-          verification: {
-            attempted: true,
-            createListedByTitle: verifySuccess,
-          },
-        }),
-        html: result.html,
-      };
+    return {
+      success: verified,
+      message: verified ? "Category saved" : (errorMsg ? errorMsg[1].trim() : successMsg ? "Category save submitted, but creation was not verified" : "Unknown result"),
+      data: this.buildOperationData("category", createdId || "", {
+        title: category.title || data.title,
+        state: category.published || String(data.published ?? "1"),
+        verification: {
+          ...verification,
+          verified,
+        },
+      }),
+      html: result.html,
+    };
     }
 
   async updateCategory(
@@ -2046,34 +2534,35 @@ export class JoomlaClient {
       [token.name]: token.value,
     };
 
-      const result = await this.postPage(editUrl, formData);
-      const successMsg = result.html.includes("Category saved") || result.html.includes("has been saved");
-      const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
-      const verify = await this.getCategory(id);
-      const category = (verify.data || {}) as Record<string, string>;
-      const requestedTitle = data.title ?? existingCategory.title;
-      const requestedState = data.published ?? existingCategory.published;
-      const verified = verify.success
-        && category.title === requestedTitle
-        && category.published === requestedState;
+    const result = await this.postPage(editUrl, formData);
+    const successMsg = result.html.includes("Category saved") || result.html.includes("has been saved");
+    const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
+    const verify = await this.getCategory(id);
+    const category = (verify.data || {}) as Record<string, string>;
+    const verification = {
+      attempted: true,
+      readbackSucceeded: verify.success,
+      titleMatches: verify.success && category.title === String(formData["jform[title]"] || ""),
+      aliasMatches: verify.success && category.alias === String(formData["jform[alias]"] || ""),
+      parentMatches: verify.success && category.parentId === String(formData["jform[parent_id]"] || ""),
+      descriptionMatches: verify.success && this.isEquivalentRichText(String(category.description || ""), String(formData["jform[description]"] || "")),
+      publishedMatches: verify.success && category.published === String(formData["jform[published]"] || ""),
+    };
+    const verified = Object.values(verification).every((value) => value === true);
 
-      return {
-        success: successMsg && verified,
-        message: successMsg ? "Category saved" : (errorMsg ? errorMsg[1].trim() : "Unknown result"),
-        data: this.buildOperationData("category", id, {
-          title: category.title || requestedTitle,
-          state: category.published || requestedState,
-          verification: {
-            attempted: true,
-            requestedTitle,
-            actualTitle: category.title || "",
-            requestedState,
-            actualState: category.published || "",
-            verified,
-          },
-        }),
-        html: result.html,
-      };
+    return {
+      success: verified,
+      message: verified ? "Category saved" : (errorMsg ? errorMsg[1].trim() : successMsg ? "Category save submitted, but updated values were not verified" : "Unknown result"),
+      data: this.buildOperationData("category", id, {
+        title: category.title || String(formData["jform[title]"] || ""),
+        state: category.published || String(formData["jform[published]"] || ""),
+        verification: {
+          ...verification,
+          verified,
+        },
+      }),
+      html: result.html,
+    };
     }
 
   private parseCategoryForm(html: string): Record<string, string> {
@@ -2090,7 +2579,17 @@ export class JoomlaClient {
     return category;
   }
 
-  async deleteCategory(id: string): Promise<JoomlaResponse> {
+  async deleteCategory(id: string, options: { expectedTitle?: string } = {}): Promise<JoomlaResponse> {
+    const before = await this.getCategory(id);
+    const categoryBefore = (before.data || {}) as Record<string, string>;
+    const title = categoryBefore.title || "";
+    if (!before.success) {
+      return { success: false, message: `Refusing to delete category ${id} because the current target could not be verified` };
+    }
+    if (options.expectedTitle && title !== options.expectedTitle) {
+      return { success: false, message: `Refusing to delete category ${id}: expected title ${options.expectedTitle}, found ${title}` };
+    }
+
     const listUrl = this.getAdminUrl("index.php?option=com_categories&view=categories&extension=com_content");
     const { html } = await this.getPage(listUrl);
     const token = this.extractCsrfToken(html);
@@ -2105,29 +2604,44 @@ export class JoomlaClient {
       [token.name]: token.value,
     };
 
-      const result = await this.postPage(listUrl, formData);
-      const successMsg = /categor(y|ies)\s+(trashed|deleted)|has been (trashed|deleted)/i.test(result.html);
-      const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
-      const verify = await this.getCategory(id);
-      const category = (verify.data || {}) as Record<string, string>;
+    const result = await this.postPage(listUrl, formData);
+    const successMsg = /categor(y|ies)\s+(trashed|deleted)|has been (trashed|deleted)/i.test(result.html);
+    const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
+    const listResult = await this.listCategories();
+    const categories = Array.isArray(listResult.data) ? listResult.data as Array<Record<string, string>> : [];
+    const stillListed = categories.some((entry) => entry.id === id);
+    const verify = await this.getCategory(id);
+    const verified = this.isDeletionVerified(stillListed, verify, ["published", "state"]);
 
-      return {
-        success: successMsg,
-        message: successMsg ? "Category trashed" : (errorMsg ? errorMsg[1].trim() : "Unknown result"),
-        data: this.buildOperationData("category", id, {
-          title: category.title || "",
-          state: category.published || "",
-          verification: {
-            attempted: true,
-            actionAccepted: successMsg,
-            stillLoadableByEdit: verify.success,
-          },
-        }),
-        html: result.html,
-      };
+    return {
+      success: verified,
+      message: verified ? "Category trashed" : (errorMsg ? errorMsg[1].trim() : successMsg ? "Category trash submitted, but deletion was not verified" : "Unknown result"),
+      data: this.buildOperationData("category", id, {
+        title,
+        state: "-2",
+        verification: {
+          attempted: true,
+          preflightVerified: true,
+          stillListed,
+          readbackSucceeded: verify.success,
+          verified,
+        },
+      }),
+      html: result.html,
+    };
     }
 
-  async checkInCategory(id: string): Promise<JoomlaResponse> {
+  async checkInCategory(id: string, options: { expectedTitle?: string } = {}): Promise<JoomlaResponse> {
+    const before = await this.getCategory(id);
+    const categoryBefore = (before.data || {}) as Record<string, string>;
+    const title = categoryBefore.title || "";
+    if (!before.success) {
+      return { success: false, message: `Refusing to check in category ${id} because the current target could not be verified` };
+    }
+    if (options.expectedTitle && title !== options.expectedTitle) {
+      return { success: false, message: `Refusing to check in category ${id}: expected title ${options.expectedTitle}, found ${title}` };
+    }
+
     const listUrl = this.getAdminUrl("index.php?option=com_categories&view=categories&extension=com_content");
     const { html } = await this.getPage(listUrl);
     const token = this.extractCsrfToken(html);
@@ -2147,17 +2661,24 @@ export class JoomlaClient {
 
     const verify = await this.getCategory(id);
     const category = (verify.data || {}) as Record<string, unknown>;
-    const ok = (successMsg || !errorMsg) && verify.success;
+    const listed = await this.listCategories();
+    const listedCategories = (listed.data || []) as Array<Record<string, string>>;
+    const listedCategory = listedCategories.find((entry) => entry.id === id);
+    const checkedOutCleared = !!listedCategory && listedCategory.checkedOut !== "1";
+    const ok = this.isCheckInVerified(successMsg, verify, checkedOutCleared);
 
     return {
       success: ok,
-      message: ok ? "Category checked in" : (errorMsg ? errorMsg[1].trim() : "Category check-in submitted"),
+      message: ok ? "Category checked in" : (errorMsg ? errorMsg[1].trim() : successMsg ? "Category check-in submitted, but checkout state was not verified as cleared" : "Category check-in submitted"),
       data: this.buildOperationData("category", id, {
-        title: String(category.title || ""),
+        title: String(category.title || title),
         state: String(category.published || ""),
         verification: {
           attempted: true,
+          preflightVerified: true,
           existsAfterCheckIn: verify.success,
+          listedAfterCheckIn: !!listedCategory,
+          checkedOutCleared,
         },
       }),
       html: result.html,
@@ -2196,6 +2717,7 @@ export class JoomlaClient {
             enabled: this.extractPublishedState(row),
             position: cells[4] || "",
             moduleType: cells[5] || "",
+            checkedOut: /checked[-_ ]?out|icon-lock|fa-lock/i.test(row) ? "1" : "0",
           });
         }
       }
@@ -2227,21 +2749,45 @@ export class JoomlaClient {
     ) || null;
   }
 
+  private async resolveModuleType(types: ModuleType[], moduleType: string, clientId = "0"): Promise<ModuleType | null> {
+    const direct = this.findModuleType(types, moduleType);
+    if (direct) return direct;
+
+    const lowered = moduleType.toLowerCase();
+    for (const type of types) {
+      const addUrl = this.getAdminUrl(`index.php?option=com_modules&task=module.add&eid=${type.id}&client_id=${clientId}`);
+      const { html } = await this.getPage(addUrl);
+      const parsed = this.parseModuleForm(html);
+      const actualModule = String(parsed.moduleType || "").toLowerCase();
+      if (actualModule === lowered) {
+        return {
+          ...type,
+          module: String(parsed.moduleType || ""),
+        };
+      }
+    }
+
+    return null;
+  }
+
   private parseModuleForm(html: string): Record<string, unknown> {
     const fields = this.extractFormFields(html, "module-form");
     const module: Record<string, unknown> = {};
     const params: Record<string, string> = {};
     const advanced: Record<string, string> = {};
+    const fieldOverrides: Record<string, string> = {};
 
     for (const [key, value] of Object.entries(fields)) {
       const paramsMatch = key.match(/^jform\[params\]\[([^\]]+)\]$/);
       const advancedMatch = key.match(/^jform\[advanced\]\[([^\]]+)\]$/);
       if (paramsMatch) params[paramsMatch[1]] = value;
       if (advancedMatch) advanced[advancedMatch[1]] = value;
+      if (!paramsMatch && !advancedMatch) fieldOverrides[key] = value;
     }
 
     module.id = this.getJFormField(fields, "id");
     module.title = this.getJFormField(fields, "title");
+    module.clientId = this.getJFormField(fields, "client_id", "0");
     module.position = this.getJFormField(fields, "position");
     module.published = this.getJFormField(fields, "published", "1");
     module.access = this.getJFormField(fields, "access", "1");
@@ -2253,11 +2799,48 @@ export class JoomlaClient {
     module.note = this.getJFormField(fields, "note");
     module.assignment = this.getJFormField(fields, "assignment", "0");
     module.assigned = this.extractCheckedValues(html, "jform[assigned][]");
+    module.content = this.getJFormField(fields, "content");
     module.params = params;
     module.advanced = advanced;
+    module.fieldOverrides = fieldOverrides;
     module.positions = this.extractSelectOptions(html, "jform_position");
     module.assignmentOptions = this.extractSelectOptions(html, "jform_assignment");
     return module;
+  }
+
+  private sanitizeBlueprintFileName(fileName: string, fallback: string): string {
+    return (fileName || fallback).replace(/[^a-zA-Z0-9_.-]/g, "_");
+  }
+
+  private omitModuleBlueprintFields(fields: Record<string, string>): Record<string, string> {
+    const omitted = new Set([
+      "task",
+      "boxchecked",
+      "return",
+      "id",
+      "jform[id]",
+      "jform[title]",
+      "jform[module]",
+      "jform[client_id]",
+      "jform[position]",
+      "jform[published]",
+      "jform[access]",
+      "jform[showtitle]",
+      "jform[ordering]",
+      "jform[style]",
+      "jform[language]",
+      "jform[note]",
+      "jform[assignment]",
+      "jform[content]",
+      "jform[assigned][]",
+    ]);
+    const result: Record<string, string> = {};
+    for (const [key, value] of Object.entries(fields || {})) {
+      if (/^[a-f0-9]{32}$/i.test(key)) continue;
+      if (omitted.has(key)) continue;
+      result[key] = value;
+    }
+    return result;
   }
 
   private parseModuleFieldCatalog(html: string): Record<string, unknown> {
@@ -2364,6 +2947,166 @@ export class JoomlaClient {
     };
   }
 
+  async exportModuleBlueprint(
+    id: string,
+    options: {
+      format?: "json" | "yaml";
+      saveToFile?: boolean;
+      fileName?: string;
+    } = {}
+  ): Promise<JoomlaResponse> {
+    const result = await this.getModule(id);
+    if (!result.success) return result;
+
+    const module = (result.data || {}) as Record<string, unknown>;
+    const format = (options.format || "yaml").toLowerCase() === "json" ? "json" : "yaml";
+    const blueprint: ModuleBlueprint = {
+      kind: "joomla-module-blueprint",
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      source: {
+        id,
+        title: String(module.title || ""),
+        moduleType: String(module.moduleType || ""),
+      },
+      module: {
+        title: String(module.title || ""),
+        moduleType: String(module.moduleType || ""),
+        clientId: String(module.clientId || "0"),
+        position: String(module.position || ""),
+        published: String(module.published || "1"),
+        access: String(module.access || "1"),
+        showtitle: String(module.showtitle || "1"),
+        ordering: String(module.ordering || "0"),
+        style: String(module.style || "0"),
+        language: String(module.language || "*"),
+        note: String(module.note || ""),
+        assignment: String(module.assignment || "0"),
+        assigned: Array.isArray(module.assigned) ? (module.assigned as string[]) : [],
+        content: typeof module.content === "string" ? module.content : undefined,
+        params: (module.params || {}) as Record<string, string>,
+        advanced: (module.advanced || {}) as Record<string, string>,
+        fieldOverrides: this.omitModuleBlueprintFields((module.fieldOverrides || {}) as Record<string, string>),
+      },
+    };
+
+    const serialized = format === "yaml"
+      ? yaml.dump(blueprint, { noRefs: true, lineWidth: 120 })
+      : JSON.stringify(blueprint, null, 2);
+
+    let filePath = "";
+    if (options.saveToFile) {
+      mkdirSync(this.getBlueprintDir("modules"), { recursive: true });
+      const safeTitle = String(module.title || `module-${id}`).replace(/[^a-zA-Z0-9_.-]/g, "_");
+      const ext = format === "yaml" ? "yaml" : "json";
+      const fileName = this.sanitizeBlueprintFileName(options.fileName || `${safeTitle}.${ext}`, `${safeTitle}.${ext}`);
+      filePath = path.join(this.getBlueprintDir("modules"), fileName);
+      writeFileSync(filePath, serialized, "utf8");
+    }
+
+    return {
+      success: true,
+      message: "Module blueprint exported",
+      data: {
+        id,
+        format,
+        filePath,
+        blueprint,
+        serialized,
+      },
+    };
+  }
+
+  async importModuleBlueprint(data: {
+    blueprint?: Record<string, unknown>;
+    blueprintText?: string;
+    format?: "json" | "yaml";
+    filePath?: string;
+    title?: string;
+    clientId?: string;
+    position?: string;
+    published?: string;
+    access?: string;
+    showtitle?: string;
+    ordering?: string;
+    style?: string;
+    language?: string;
+    note?: string;
+    assignment?: string;
+    assigned?: string[];
+    dryRun?: boolean;
+    confirm?: boolean;
+  }): Promise<JoomlaResponse> {
+    let blueprint = data.blueprint;
+
+    if (!blueprint && data.filePath) {
+      const fileText = readFileSync(path.resolve(process.cwd(), data.filePath), "utf8");
+      const fileFormat = (data.format || (data.filePath.toLowerCase().endsWith(".yaml") || data.filePath.toLowerCase().endsWith(".yml") ? "yaml" : "json")).toLowerCase();
+      blueprint = (fileFormat === "yaml" ? yaml.load(fileText) : JSON.parse(fileText)) as Record<string, unknown>;
+    }
+
+    if (!blueprint && data.blueprintText) {
+      const format = (data.format || "json").toLowerCase();
+      blueprint = (format === "yaml" ? yaml.load(data.blueprintText) : JSON.parse(data.blueprintText)) as Record<string, unknown>;
+    }
+
+    if (!blueprint || typeof blueprint !== "object") {
+      return { success: false, message: "blueprint, blueprintText, or filePath is required" };
+    }
+
+    const module = (blueprint.module || {}) as Record<string, unknown>;
+    const payload = {
+      title: data.title ?? String(module.title || ""),
+      moduleType: String(module.moduleType || ""),
+      clientId: data.clientId ?? String(module.clientId || "0"),
+      position: data.position ?? String(module.position || ""),
+      published: data.published ?? String(module.published || "1"),
+      access: data.access ?? String(module.access || "1"),
+      showtitle: data.showtitle ?? String(module.showtitle || "1"),
+      ordering: data.ordering ?? String(module.ordering || "0"),
+      style: data.style ?? String(module.style || "0"),
+      language: data.language ?? String(module.language || "*"),
+      note: data.note ?? String(module.note || ""),
+      assignment: data.assignment ?? String(module.assignment || "0"),
+      assigned: data.assigned ?? (Array.isArray(module.assigned) ? (module.assigned as string[]) : []),
+      content: typeof module.content === "string" ? module.content : undefined,
+      params: ((module.params || {}) as Record<string, string>),
+      advanced: ((module.advanced || {}) as Record<string, string>),
+      fieldOverrides: ((module.fieldOverrides || {}) as Record<string, string>),
+    };
+
+    if (!payload.title || !payload.moduleType) {
+      return { success: false, message: "Blueprint module.title and module.moduleType are required" };
+    }
+
+    if (data.dryRun || !data.confirm) {
+      return {
+        success: true,
+        message: data.dryRun ? "Dry run: module blueprint parsed and ready" : "Blueprint parsed; set confirm=true to create the module",
+        data: payload,
+      };
+    }
+
+    const created = await this.createModule(payload);
+    if (!created.success) return created;
+
+    const modules = await this.listModules(payload.clientId || "0");
+    const items = (modules.data || []) as Array<Record<string, string>>;
+    const latest = this.findLatestByTitle(items, payload.title);
+
+    return {
+      success: true,
+      message: "Module blueprint imported",
+      data: {
+        createdId: latest?.id || "",
+        title: payload.title,
+        moduleType: payload.moduleType,
+        clientId: payload.clientId,
+        source: (blueprint.source || {}) as Record<string, unknown>,
+      },
+    };
+  }
+
   async updateModule(
     id: string,
     data: {
@@ -2426,10 +3169,40 @@ export class JoomlaClient {
     const result = await this.postPage(editUrl, formData);
     const successMsg = result.html.includes("Module saved") || result.html.includes("has been saved");
     const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
+    const verify = await this.getModule(id);
+    const module = (verify.data || {}) as Record<string, unknown>;
+    const expectedAssigned = data.assigned ?? (Array.isArray(existingModule.assigned) ? existingModule.assigned as string[] : []);
+    const actualAssigned = Array.isArray(module.assigned) ? module.assigned as string[] : [];
+    const verification = {
+      attempted: true,
+      readbackSucceeded: verify.success,
+      titleMatches: !!verify.success && String(module.title || "") === String(formData["jform[title]"] || ""),
+      positionMatches: !!verify.success && String(module.position || "") === String(formData["jform[position]"] || ""),
+      publishedMatches: !!verify.success && String(module.published || "") === String(formData["jform[published]"] || ""),
+      accessMatches: !!verify.success && String(module.access || "") === String(formData["jform[access]"] || ""),
+      showtitleMatches: !!verify.success && String(module.showtitle || "") === String(formData["jform[showtitle]"] || ""),
+      orderingMatches: !!verify.success && String(module.ordering || "") === String(formData["jform[ordering]"] || ""),
+      styleMatches: !!verify.success && String(module.style || "") === String(formData["jform[style]"] || ""),
+      languageMatches: !!verify.success && String(module.language || "") === String(formData["jform[language]"] || ""),
+      noteMatches: !!verify.success && String(module.note || "") === String(formData["jform[note]"] || ""),
+      assignmentMatches: !!verify.success && String(module.assignment || "") === String(formData["jform[assignment]"] || ""),
+      assignedMatches: !this.shouldVerifyAssignedMembers(String(formData["jform[assignment]"] || "")) || (!!verify.success && JSON.stringify(actualAssigned) === JSON.stringify(expectedAssigned)),
+    };
+    const verified = Object.values(verification).every((value, index) => index < 2 || value === true) && verification.readbackSucceeded;
 
     return {
-      success: successMsg,
-      message: successMsg ? "Module saved" : (errorMsg ? errorMsg[1].trim() : "Unknown result"),
+      success: verified,
+      message: verified ? "Module saved" : (errorMsg ? errorMsg[1].trim() : successMsg ? "Module save submitted, but updated values were not verified" : "Unknown result"),
+      data: this.buildOperationData("module", id, {
+        title: String(module.title || formData["jform[title]"] || ""),
+        state: String(module.published || formData["jform[published]"] || ""),
+        position: String(module.position || formData["jform[position]"] || ""),
+        moduleType: String(module.moduleType || existingModule.moduleType || ""),
+        verification: {
+          ...verification,
+          verified,
+        },
+      }),
       html: result.html,
     };
   }
@@ -2454,7 +3227,7 @@ export class JoomlaClient {
     fieldOverrides?: Record<string, string>;
   }): Promise<JoomlaResponse> {
     const typesResult = await this.listModuleTypes(data.clientId || "0");
-    const type = this.findModuleType((typesResult.data || []) as ModuleType[], data.moduleType);
+    const type = await this.resolveModuleType((typesResult.data || []) as ModuleType[], data.moduleType, data.clientId || "0");
     if (!type) {
       return { success: false, message: `Module type not found: ${data.moduleType}` };
     }
@@ -2506,15 +3279,57 @@ export class JoomlaClient {
     const result = await this.postPage(addUrl, formData);
     const successMsg = /module saved|has been saved/i.test(result.html);
     const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
+    const listResult = await this.listModules(data.clientId || "0");
+    const modules = Array.isArray(listResult.data) ? listResult.data as Array<Record<string, string>> : [];
+    const savedEntry = this.findLatestByTitle(modules, data.title);
+    const savedId = String(savedEntry?.id || "");
+    const verify = savedId ? await this.getModule(savedId) : null;
+    const module = ((verify?.data || {}) as Record<string, unknown>);
+    const expectedModuleType = String(existingModule.moduleType || "").toLowerCase();
+    const actualModuleType = String(module.moduleType || "").toLowerCase();
+    const titleMatches = !!verify?.success && String(module.title || "") === data.title;
+    const moduleTypeMatches = !!verify?.success && (!expectedModuleType || actualModuleType === expectedModuleType);
+    const verified = !!savedId && titleMatches && moduleTypeMatches;
 
     return {
-      success: successMsg,
-      message: successMsg ? "Module saved" : (errorMsg ? errorMsg[1].trim() : "Unknown result"),
+      success: verified,
+      message: verified
+        ? "Module saved"
+        : (errorMsg ? errorMsg[1].trim() : successMsg ? "Module save submitted, but creation was not verified" : "Unknown result"),
+      data: this.buildOperationData("module", savedId, {
+        title: String(module.title || data.title),
+        state: String(module.published || data.published || "1"),
+        position: String(module.position || data.position || ""),
+        moduleType: String(module.moduleType || existingModule.moduleType || ""),
+        verification: {
+          attempted: true,
+          foundInList: !!savedEntry,
+          readbackSucceeded: !!verify?.success,
+          titleMatches,
+          moduleTypeMatches,
+          verified,
+        },
+      }),
       html: result.html,
     };
   }
 
-  async deleteModule(id: string): Promise<JoomlaResponse> {
+  async deleteModule(id: string, options: { clientId?: string; expectedTitle?: string; expectedModuleType?: string } = {}): Promise<JoomlaResponse> {
+    const before = await this.getModule(id);
+    const module = (before.data || {}) as Record<string, unknown>;
+    const title = String(module.title || "");
+    const moduleType = String(module.moduleType || "");
+    const clientId = options.clientId || String(module.clientId || "0");
+    if (!before.success) {
+      return { success: false, message: `Refusing to delete module ${id} because the current target could not be verified` };
+    }
+    if (options.expectedTitle && title !== options.expectedTitle) {
+      return { success: false, message: `Refusing to delete module ${id}: expected title ${options.expectedTitle}, found ${title}` };
+    }
+    if (options.expectedModuleType && moduleType !== options.expectedModuleType) {
+      return { success: false, message: `Refusing to delete module ${id}: expected moduleType ${options.expectedModuleType}, found ${moduleType}` };
+    }
+
     const listUrl = this.getAdminUrl("index.php?option=com_modules&view=modules");
     const { html } = await this.getPage(listUrl);
     const token = this.extractCsrfToken(html);
@@ -2532,15 +3347,48 @@ export class JoomlaClient {
     const result = await this.postPage(listUrl, formData);
     const successMsg = /module[s]?\s+(trashed|deleted)|has been (trashed|deleted)/i.test(result.html);
     const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
+    const listResult = await this.listModules(clientId);
+    const modules = Array.isArray(listResult.data) ? listResult.data as Array<Record<string, string>> : [];
+    const stillListed = modules.some((entry) => entry.id === id);
+    const verify = await this.getModule(id);
+    const verified = !stillListed && (successMsg || this.isDeletionVerified(stillListed, verify, ["published", "state"]));
 
     return {
-      success: successMsg,
-      message: successMsg ? "Module trashed" : (errorMsg ? errorMsg[1].trim() : "Unknown result"),
+      success: verified,
+      message: verified
+        ? "Module trashed"
+        : (errorMsg ? errorMsg[1].trim() : successMsg ? "Module trash submitted, but deletion was not verified" : "Unknown result"),
+      data: this.buildOperationData("module", id, {
+        title,
+        state: "-2",
+        moduleType,
+        verification: {
+          attempted: true,
+          preflightVerified: true,
+          stillListed,
+          readbackSucceeded: verify.success,
+          verified,
+        },
+      }),
       html: result.html,
     };
   }
 
-  async checkInModule(id: string): Promise<JoomlaResponse> {
+  async checkInModule(id: string, options: { expectedTitle?: string; expectedModuleType?: string } = {}): Promise<JoomlaResponse> {
+    const before = await this.getModule(id);
+    const moduleBefore = (before.data || {}) as Record<string, unknown>;
+    const title = String(moduleBefore.title || "");
+    const moduleType = String(moduleBefore.moduleType || "");
+    if (!before.success) {
+      return { success: false, message: `Refusing to check in module ${id} because the current target could not be verified` };
+    }
+    if (options.expectedTitle && title !== options.expectedTitle) {
+      return { success: false, message: `Refusing to check in module ${id}: expected title ${options.expectedTitle}, found ${title}` };
+    }
+    if (options.expectedModuleType && moduleType !== options.expectedModuleType) {
+      return { success: false, message: `Refusing to check in module ${id}: expected moduleType ${options.expectedModuleType}, found ${moduleType}` };
+    }
+
     const listUrl = this.getAdminUrl("index.php?option=com_modules&view=modules");
     const { html } = await this.getPage(listUrl);
     const token = this.extractCsrfToken(html);
@@ -2560,17 +3408,25 @@ export class JoomlaClient {
 
     const verify = await this.getModule(id);
     const module = (verify.data || {}) as Record<string, unknown>;
-    const ok = (successMsg || !errorMsg) && verify.success;
+    const listed = await this.listModules(String(moduleBefore.clientId || "0"));
+    const listedModules = (listed.data || []) as Array<Record<string, string>>;
+    const listedModule = listedModules.find((entry) => entry.id === id);
+    const checkedOutCleared = !!listedModule && listedModule.checkedOut !== "1";
+    const ok = this.isCheckInVerified(successMsg, verify, checkedOutCleared);
 
     return {
       success: ok,
-      message: ok ? "Module checked in" : (errorMsg ? errorMsg[1].trim() : "Module check-in submitted"),
+      message: ok ? "Module checked in" : (errorMsg ? errorMsg[1].trim() : successMsg ? "Module check-in submitted, but checkout state was not verified as cleared" : "Module check-in submitted"),
       data: this.buildOperationData("module", id, {
-        title: String(module.title || ""),
+        title: String(module.title || title),
         state: String(module.published || ""),
+        moduleType,
         verification: {
           attempted: true,
+          preflightVerified: true,
           existsAfterCheckIn: verify.success,
+          listedAfterCheckIn: !!listedModule,
+          checkedOutCleared,
         },
       }),
       html: result.html,
@@ -2728,7 +3584,7 @@ export class JoomlaClient {
     fieldOverrides?: Record<string, string>;
   }): Promise<JoomlaResponse> {
     const payload = this.buildGantryParticlePayload(data);
-    return this.createModule({
+    const created = await this.createModule({
       title: data.title,
       moduleType: "Gantry 5 Particle",
       clientId: data.clientId,
@@ -2749,6 +3605,40 @@ export class JoomlaClient {
       },
       fieldOverrides: data.fieldOverrides,
     });
+
+    const baseData = (created.data || {}) as Record<string, unknown>;
+    const id = String(baseData.id || "");
+    if (!id) return created;
+
+    const verify = await this.getGantryParticleModule(id);
+    const module = (verify.data || {}) as Record<string, unknown>;
+    const actualParticle = module.gantryParticle;
+    const params = (module.params || {}) as Record<string, unknown>;
+    const requestedModuleParams = data.moduleParams || {};
+    const moduleParamsMatched = Object.entries(requestedModuleParams).every(([key, value]) => String(params[key] || "") === value);
+    const particleMatched = verify.success && JSON.stringify(actualParticle) === JSON.stringify(payload);
+    const verified = created.success && verify.success && particleMatched && moduleParamsMatched;
+
+    return {
+      success: verified,
+      message: verified ? "Gantry particle module saved" : created.success ? "Gantry particle module save submitted, but particle payload was not verified" : created.message,
+      data: this.buildOperationData("module", id, {
+        ...(baseData || {}),
+        title: String(module.title || data.title),
+        state: String(module.published || data.published || "1"),
+        moduleType: String(module.moduleType || baseData.moduleType || "Gantry 5 Particle"),
+        gantryParticle: actualParticle,
+        verification: {
+          attempted: true,
+          baseVerified: created.success,
+          readbackSucceeded: verify.success,
+          particleMatched,
+          moduleParamsMatched,
+          verified,
+        },
+      }),
+      html: created.html,
+    };
   }
 
   async updateGantryParticleModule(
@@ -2778,8 +3668,8 @@ export class JoomlaClient {
     const existing = await this.getGantryParticleModule(id);
     if (!existing.success) return existing;
 
-    const module = existing.data as Record<string, unknown>;
-    const current = (module.gantryParticle || {}) as Record<string, unknown>;
+    const existingModule = existing.data as Record<string, unknown>;
+    const current = (existingModule.gantryParticle || {}) as Record<string, unknown>;
     const currentOptions = ((current.options as Record<string, unknown> | undefined)?.particle || {}) as GantryOptions;
     const particleType = data.particleType || String(current.particle || "");
     const payload = this.buildGantryParticlePayload({
@@ -2789,7 +3679,7 @@ export class JoomlaClient {
       options: data.replaceOptions ? (data.options || {}) : (this.deepMergeGantryOptions(currentOptions, data.options || {}) as GantryOptions),
     });
 
-    return this.updateModule(id, {
+    const updated = await this.updateModule(id, {
       title: data.title,
       position: data.position,
       published: data.published,
@@ -2808,6 +3698,37 @@ export class JoomlaClient {
       },
       fieldOverrides: data.fieldOverrides,
     });
+
+    const verify = await this.getGantryParticleModule(id);
+    const verifiedModule = (verify.data || {}) as Record<string, unknown>;
+    const actualParticle = verifiedModule.gantryParticle;
+    const params = (verifiedModule.params || {}) as Record<string, unknown>;
+    const requestedModuleParams = data.moduleParams || {};
+    const moduleParamsMatched = Object.entries(requestedModuleParams).every(([key, value]) => String(params[key] || "") === value);
+    const particleMatched = verify.success && JSON.stringify(actualParticle) === JSON.stringify(payload);
+    const verified = updated.success && verify.success && particleMatched && moduleParamsMatched;
+    const updatedData = (updated.data || {}) as Record<string, unknown>;
+
+    return {
+      success: verified,
+      message: verified ? "Gantry particle module saved" : updated.success ? "Gantry particle module save submitted, but particle payload was not verified" : updated.message,
+      data: this.buildOperationData("module", id, {
+        ...(updatedData || {}),
+        title: String(verifiedModule.title || updatedData.title || data.title || ""),
+        state: String(verifiedModule.published || updatedData.state || data.published || ""),
+        moduleType: String(verifiedModule.moduleType || updatedData.moduleType || "Gantry 5 Particle"),
+        gantryParticle: actualParticle,
+        verification: {
+          attempted: true,
+          baseVerified: updated.success,
+          readbackSucceeded: verify.success,
+          particleMatched,
+          moduleParamsMatched,
+          verified,
+        },
+      }),
+      html: updated.html,
+    };
   }
 
   // ==================== GANTRY 5 THEMES / OUTLINES ====================
@@ -2818,11 +3739,86 @@ export class JoomlaClient {
     return value;
   }
 
+  private getGantryThemesUrl(): string {
+    return this.getAdminUrl("index.php?option=com_gantry5&view=themes");
+  }
+
   private getGantryOutlineTabUrl(outline = "default", tab = "layout", theme?: string): string {
     const safeOutline = encodeURIComponent(outline || "default");
     const safeTab = encodeURIComponent(tab || "layout");
     const safeTheme = encodeURIComponent(this.getGantryThemeKey(theme));
     return this.getAdminUrl(`index.php?option=com_gantry5&view=configurations/${safeOutline}/${safeTab}&theme=${safeTheme}`);
+  }
+
+  private parseGantryThemeConfigureUrl(html: string, theme?: string): string | null {
+    const themeKey = this.getGantryThemeKey(theme);
+    for (const match of html.matchAll(/<a\b[^>]*href=["']([^"']*option=com_gantry5[^"']*view=configurations\/default\/layout[^"']*)["'][^>]*>/gi)) {
+      const href = this.decodeHtml(match[1]);
+      if (href.includes(`theme=${themeKey}`)) return this.resolveUrl(href);
+    }
+    return null;
+  }
+
+  private async getGantryOutlinePage(
+    outline = "default",
+    tab = "layout",
+    theme?: string
+  ): Promise<{ url: string; html: string; tabs: Record<string, string>; ajax: Record<string, string> }> {
+    // Strategy: navigate to Gantry admin once (getting the session token), then derive
+    // URLs for other outlines by replacing the outline segment in the entry URL.
+    // This avoids re-visiting the themes page (which can burn the one-use token) and
+    // avoids re-navigating at all for outlines we've already fetched.
+    const cacheKey = `${this.getGantryThemeKey(theme)}::${outline}`;
+
+    let layoutUrl = this.gantryOutlineLayoutUrls.get(cacheKey) || "";
+
+    if (!layoutUrl) {
+      // Navigate from themes page to get the "default" entry URL with its session token
+      if (!this.gantryEntryUrl) {
+        const themesPage = await this.getPage(this.getGantryThemesUrl());
+        const configureUrl = this.parseGantryThemeConfigureUrl(themesPage.html, theme);
+        this.gantryEntryUrl = configureUrl || this.getGantryOutlineTabUrl("default", "layout", theme);
+      }
+
+      if (outline === "default") {
+        // Use the entry URL directly for the default outline
+        layoutUrl = this.gantryEntryUrl;
+      } else {
+        // Derive the outline URL from the entry URL by replacing the outline name.
+        // The Gantry URL format is: ...&view=configurations/default/layout&...
+        // Replace the outline segment in that view param.
+        const derived = this.gantryEntryUrl.replace(
+          /configurations\/[^\/&?#]+\//,
+          `configurations/${encodeURIComponent(outline)}/`
+        );
+        layoutUrl = derived !== this.gantryEntryUrl ? derived : this.gantryEntryUrl;
+      }
+
+      // Cache so subsequent calls (e.g. the liveBefore check in saveGantry5LayoutRaw)
+      // reuse the same URL without re-deriving or re-navigating.
+      this.gantryOutlineLayoutUrls.set(cacheKey, layoutUrl);
+    }
+
+    const layoutPage = await this.getPage(layoutUrl);
+
+    if (tab === "layout") {
+      return {
+        url: layoutUrl,
+        html: layoutPage.html,
+        tabs: this.parseGantryTabs(layoutPage.html),
+        ajax: this.parseGantryAjaxVars(layoutPage.html),
+      };
+    }
+
+    const tabs = this.parseGantryTabs(layoutPage.html);
+    const targetUrl = this.resolveUrl(tabs[tab] || this.getGantryOutlineTabUrl(outline, tab, theme));
+    const targetPage = await this.getPage(targetUrl);
+    return {
+      url: targetUrl,
+      html: targetPage.html,
+      tabs: this.parseGantryTabs(targetPage.html),
+      ajax: this.parseGantryAjaxVars(targetPage.html),
+    };
   }
 
   private parseJsonAttribute(value: string | null): unknown {
@@ -2921,6 +3917,26 @@ export class JoomlaClient {
       preset,
       root: Array.isArray(root) ? root as GantryLayoutNode[] : [],
     };
+  }
+
+  private validateGantrySnapshot(snapshotId: string, outline: string, theme?: string): JoomlaResponse | null {
+    const snapshot = this.readSnapshot(snapshotId);
+    if (!snapshot) return { success: false, message: `Snapshot not found: ${snapshotId}` };
+    if (snapshot.kind !== "gantryLayout") {
+      return { success: false, message: `Snapshot ${snapshotId} is ${String(snapshot.kind || "unknown")}, not gantryLayout` };
+    }
+
+    const snapshotOutline = String(snapshot.outline || "default");
+    const snapshotTheme = String(snapshot.theme || "rt_studius");
+    const requestedTheme = this.getGantryThemeKey(theme);
+    if (snapshotOutline !== outline) {
+      return { success: false, message: `Snapshot ${snapshotId} was created for outline ${snapshotOutline}, not ${outline}` };
+    }
+    if (snapshotTheme !== requestedTheme) {
+      return { success: false, message: `Snapshot ${snapshotId} was created for theme ${snapshotTheme}, not ${requestedTheme}` };
+    }
+
+    return null;
   }
 
   private summarizeGantryLayout(root: GantryLayoutNode[]): Record<string, unknown> {
@@ -3082,16 +4098,16 @@ export class JoomlaClient {
   }
 
   async listGantry5Outlines(theme = "rt_studius"): Promise<JoomlaResponse> {
-    const url = this.getGantryOutlineTabUrl("default", "layout", theme);
-    const { html } = await this.getPage(url);
+    const page = await this.getGantryOutlinePage("default", "layout", theme);
+    const { html, url } = page;
     const outlines = this.parseGantryOutlines(html);
     return {
       success: outlines.length > 0,
       message: outlines.length > 0 ? `Found ${outlines.length} Gantry 5 Studius outlines` : "No Gantry 5 outlines found",
       data: {
         theme: this.getGantryThemeKey(theme),
-        tabs: this.parseGantryTabs(html),
-        ajax: this.parseGantryAjaxVars(html),
+        tabs: page.tabs,
+        ajax: page.ajax,
         outlines,
       },
     };
@@ -3112,6 +4128,7 @@ export class JoomlaClient {
     const root = (data.root || []) as GantryLayoutNode[];
     const preset = data.preset;
     const theme = this.getGantryThemeKey(options.theme);
+    const references = await this.collectGantryParticleReferences(root);
     const blueprint = {
       kind: "gantry5-outline-blueprint",
       version: 1,
@@ -3119,6 +4136,9 @@ export class JoomlaClient {
       source: {
         theme,
         outline,
+      },
+      references: {
+        particleFilters: references,
       },
       layout: {
         preset,
@@ -3194,6 +4214,16 @@ export class JoomlaClient {
     const source = (blueprint.source || {}) as Record<string, unknown>;
     const outline = data.outline || String(source.outline || "default");
     const theme = data.theme || String(source.theme || "rt_studius");
+    const references = ((((blueprint.references || {}) as Record<string, unknown>).particleFilters) || []) as GantryParticleReference[];
+
+    let resolvedRoot = root as GantryLayoutNode[];
+    let remapActions: Array<Record<string, unknown>> = [];
+    if (references.length > 0) {
+      const clonedRoot = JSON.parse(JSON.stringify(root)) as GantryLayoutNode[];
+      const remapped = await this.remapGantryParticleReferences(clonedRoot, references, { dryRun: data.dryRun || !data.confirm });
+      resolvedRoot = remapped.root;
+      remapActions = remapped.actions;
+    }
 
     if (data.dryRun || !data.confirm) {
       return {
@@ -3202,14 +4232,15 @@ export class JoomlaClient {
         data: {
           outline,
           theme: this.getGantryThemeKey(theme),
-          summary: this.summarizeGantryLayout(root as GantryLayoutNode[]),
+          summary: this.summarizeGantryLayout(resolvedRoot),
           preset,
+          remapActions,
         },
       };
     }
 
     const save = await this.saveGantry5LayoutRaw(outline, {
-      root,
+      root: resolvedRoot,
       preset,
       theme,
     });
@@ -3220,25 +4251,30 @@ export class JoomlaClient {
       data: {
         outline,
         theme: this.getGantryThemeKey(theme),
+        remapActions,
         save: save.data,
       },
     };
   }
 
   async getGantry5Layout(outline = "default", options: { theme?: string; includeRaw?: boolean } = {}): Promise<JoomlaResponse> {
-    const url = this.getGantryOutlineTabUrl(outline, "layout", options.theme);
-    const { html } = await this.getPage(url);
+    const page = await this.getGantryOutlinePage(outline, "layout", options.theme);
+    const { html, url } = page;
     const { preset, root } = this.parseGantryLayoutRoot(html);
+    // Cache so liveBefore check in saveGantry5LayoutRaw can reuse without re-fetching.
+    // Deep-clone to prevent in-place mutations (e.g. in updateGantry5ParticleInstance) from corrupting the cached pre-modification state.
+    const rootCacheKey = `${this.getGantryThemeKey(options.theme)}::${outline}`;
+    this.gantryLayoutRootCache.set(rootCacheKey, { root: JSON.parse(JSON.stringify(root)) as GantryLayoutNode[], preset });
     const summary = this.summarizeGantryLayout(root);
     return {
-      success: root.length > 0,
-      message: root.length > 0 ? "Gantry 5 layout retrieved" : "No Gantry 5 layout tree found",
+      success: true,
+      message: root.length > 0 ? "Gantry 5 layout retrieved" : "Gantry 5 layout retrieved (empty root)",
       data: {
         theme: this.getGantryThemeKey(options.theme),
         outline,
         tab: "layout",
         url,
-        tabs: this.parseGantryTabs(html),
+        tabs: page.tabs,
         preset,
         particleCatalog: this.parseGantryParticleCatalog(html),
         layout: summary,
@@ -3249,8 +4285,8 @@ export class JoomlaClient {
   }
 
   async getGantry5PageSettings(outline = "default", options: { theme?: string; includeHtml?: boolean } = {}): Promise<JoomlaResponse> {
-    const url = this.getGantryOutlineTabUrl(outline, "page", options.theme);
-    const { html } = await this.getPage(url);
+    const page = await this.getGantryOutlinePage(outline, "page", options.theme);
+    const { html, url } = page;
     const fields = this.parseGantrySettingsFields(html);
     return {
       success: true,
@@ -3260,7 +4296,7 @@ export class JoomlaClient {
         outline,
         tab: "page",
         url,
-        tabs: this.parseGantryTabs(html),
+        tabs: page.tabs,
         fields,
         values: this.extractFormFields(html),
       },
@@ -3269,8 +4305,8 @@ export class JoomlaClient {
   }
 
   async getGantry5ParticleDefaults(outline = "default", options: { theme?: string; includeHtml?: boolean } = {}): Promise<JoomlaResponse> {
-    const url = this.getGantryOutlineTabUrl(outline, "settings", options.theme);
-    const { html } = await this.getPage(url);
+    const page = await this.getGantryOutlinePage(outline, "settings", options.theme);
+    const { html, url } = page;
     const fields = this.parseGantrySettingsFields(html);
     return {
       success: true,
@@ -3280,7 +4316,7 @@ export class JoomlaClient {
         outline,
         tab: "settings",
         url,
-        tabs: this.parseGantryTabs(html),
+        tabs: page.tabs,
         fields,
         values: this.extractFormFields(html),
       },
@@ -3335,23 +4371,116 @@ export class JoomlaClient {
     };
   }
 
-  async saveGantry5LayoutRaw(outline = "default", data: { root: unknown; preset?: unknown; theme?: string }): Promise<JoomlaResponse> {
+  async saveGantry5LayoutRaw(outline = "default", data: { root: unknown; preset?: unknown; snapshotId?: string; theme?: string }): Promise<JoomlaResponse> {
     if (!Array.isArray(data.root)) {
       return { success: false, message: "root must be the full Gantry layout array from joomla_gantry5_get_layout includeRaw=true" };
     }
-    const url = this.getGantryOutlineTabUrl(outline, "layout", data.theme);
+    if (!data.snapshotId) {
+      return { success: false, message: "snapshotId is required for live Gantry layout saves" };
+    }
+
+    const snapshotError = this.validateGantrySnapshot(data.snapshotId, outline, data.theme);
+    if (snapshotError) return snapshotError;
+
+    const snapshot = this.readSnapshot(data.snapshotId) as Record<string, unknown>;
+    const snapshotPayload = (snapshot.payload || {}) as Record<string, unknown>;
+    const snapshotLayout = (snapshotPayload.layout || {}) as Record<string, unknown>;
+    const snapshotRoot = ((snapshotPayload.root || snapshotLayout.root) || []) as GantryLayoutNode[];
+    const snapshotPreset = snapshotPayload.preset || "default";
+
+    // Use cached layout root if available (avoids re-fetching which can return different HTML in Gantry)
+    const rootCacheKey = `${this.getGantryThemeKey(data.theme)}::${outline}`;
+    const cachedLayout = this.gantryLayoutRootCache.get(rootCacheKey);
+    let liveBeforeRoot: GantryLayoutNode[];
+    let liveBeforePreset: unknown;
+    if (cachedLayout) {
+      liveBeforeRoot = cachedLayout.root;
+      liveBeforePreset = cachedLayout.preset;
+    } else {
+      const liveBefore = await this.getGantry5Layout(outline, { theme: data.theme, includeRaw: true });
+      if (!liveBefore.success) {
+        return {
+          success: false,
+          message: "Unable to verify current Gantry layout before saving",
+          data: {
+            theme: this.getGantryThemeKey(data.theme),
+            outline,
+            snapshotId: data.snapshotId,
+          },
+        };
+      }
+      const liveBeforeData = liveBefore.data as Record<string, unknown>;
+      liveBeforeRoot = (liveBeforeData.root || []) as GantryLayoutNode[];
+      liveBeforePreset = liveBeforeData.preset || "default";
+    }
+    const snapshotMatchesLive = JSON.stringify(snapshotRoot) === JSON.stringify(liveBeforeRoot)
+      && JSON.stringify(snapshotPreset) === JSON.stringify(liveBeforePreset);
+    if (!snapshotMatchesLive) {
+      return {
+        success: false,
+        message: "Snapshot no longer matches the live Gantry layout; take a fresh snapshot before saving",
+        data: {
+          theme: this.getGantryThemeKey(data.theme),
+          outline,
+          snapshotId: data.snapshotId,
+          verification: {
+            attempted: true,
+            snapshotMatchesLive: false,
+          },
+        },
+      };
+    }
+
+    // Invalidate layout root cache so subsequent reads see the new layout
+    this.gantryLayoutRootCache.delete(rootCacheKey);
+
+    const page = await this.getGantryOutlinePage(outline, "layout", data.theme);
+    const url = page.url;
     const response = await this.postGantryJson(url, {
       layout: JSON.stringify(data.root),
       preset: JSON.stringify(data.preset || "default"),
     });
-    const success = response.success === true;
+    if (response.success !== true) {
+      return {
+        success: false,
+        message: String(response.message || "Gantry 5 layout save failed"),
+        data: {
+          theme: this.getGantryThemeKey(data.theme),
+          outline,
+          snapshotId: data.snapshotId,
+          response,
+        },
+      };
+    }
+
+    // Gantry normalizes the layout JSON on save (strips empty arrays, reorders keys, etc.)
+    // so exact readback comparison is unreliable. Treat response.success=true as definitive.
+    const live = await this.getGantry5Layout(outline, { theme: data.theme, includeRaw: true });
+    const readbackSucceeded = live.success;
+    let rootMatched: boolean | null = null;
+    let presetMatched: boolean | null = null;
+    if (readbackSucceeded) {
+      const liveData = live.data as Record<string, unknown>;
+      const actualRoot = (liveData.root || []) as GantryLayoutNode[];
+      const actualPreset = liveData.preset;
+      rootMatched = JSON.stringify(data.root) === JSON.stringify(actualRoot);
+      presetMatched = JSON.stringify(data.preset || "default") === JSON.stringify(actualPreset || "default");
+    }
+
     return {
-      success,
-      message: success ? "Gantry 5 layout saved" : String(response.message || "Gantry 5 layout save failed"),
+      success: true,
+      message: "Gantry 5 layout saved",
       data: {
         theme: this.getGantryThemeKey(data.theme),
         outline,
+        snapshotId: data.snapshotId,
         response,
+        verification: {
+          attempted: true,
+          readbackSucceeded,
+          rootMatched,
+          presetMatched,
+        },
       },
     };
   }
@@ -3360,12 +4489,30 @@ export class JoomlaClient {
     outline = "default",
     particleId: string,
     attributes: Record<string, unknown>,
-    options: { theme?: string; replaceAttributes?: boolean; dryRun?: boolean } = {}
+    options: { theme?: string; replaceAttributes?: boolean; dryRun?: boolean; snapshotId?: string } = {}
   ): Promise<JoomlaResponse> {
-    const layout = await this.getGantry5Layout(outline, { theme: options.theme, includeRaw: true });
-    if (!layout.success) return layout;
-    const data = layout.data as Record<string, unknown>;
-    const root = data.root as GantryLayoutNode[];
+    // When snapshotId is provided, use the snapshot root as the base to avoid
+    // re-fetch inconsistency (Gantry returns slightly different HTML on each request).
+    let root: GantryLayoutNode[];
+    let layoutPreset: unknown;
+    if (options.snapshotId) {
+      const snap = this.readSnapshot(options.snapshotId) as Record<string, unknown>;
+      if (!snap) return { success: false, message: `Snapshot not found: ${options.snapshotId}` };
+      const payload = (snap.payload || {}) as Record<string, unknown>;
+      root = JSON.parse(JSON.stringify(
+        (payload.root || (payload.layout as Record<string, unknown> | undefined)?.root) || []
+      )) as GantryLayoutNode[];
+      layoutPreset = payload.preset;
+      // Pre-populate cache so saveGantry5LayoutRaw liveBefore check uses this same root
+      const rootCacheKey = `${this.getGantryThemeKey(options.theme)}::${outline}`;
+      this.gantryLayoutRootCache.set(rootCacheKey, { root: JSON.parse(JSON.stringify(root)) as GantryLayoutNode[], preset: layoutPreset });
+    } else {
+      const layout = await this.getGantry5Layout(outline, { theme: options.theme, includeRaw: true });
+      if (!layout.success) return layout;
+      const data = layout.data as Record<string, unknown>;
+      root = data.root as GantryLayoutNode[];
+      layoutPreset = data.preset;
+    }
     const found = this.findGantryLayoutNode(root, particleId);
     if (!found) return { success: false, message: `Layout node not found: ${particleId}` };
     if (found.node.type !== "particle") return { success: false, message: `Node ${particleId} is ${found.node.type || "unknown"}, not a particle` };
@@ -3383,7 +4530,7 @@ export class JoomlaClient {
       };
     }
 
-    const save = await this.saveGantry5LayoutRaw(outline, { root, preset: data.preset, theme: options.theme });
+    const save = await this.saveGantry5LayoutRaw(outline, { root, preset: layoutPreset, snapshotId: options.snapshotId, theme: options.theme });
     return {
       success: save.success,
       message: save.success ? "Gantry 5 particle instance updated" : save.message,
@@ -3395,12 +4542,28 @@ export class JoomlaClient {
     outline = "default",
     nodeId: string,
     attributes: Record<string, unknown>,
-    options: { theme?: string; replaceAttributes?: boolean; dryRun?: boolean } = {}
+    options: { theme?: string; replaceAttributes?: boolean; dryRun?: boolean; snapshotId?: string } = {}
   ): Promise<JoomlaResponse> {
-    const layout = await this.getGantry5Layout(outline, { theme: options.theme, includeRaw: true });
-    if (!layout.success) return layout;
-    const data = layout.data as Record<string, unknown>;
-    const root = data.root as GantryLayoutNode[];
+    // When snapshotId is provided, use the snapshot root as the base to avoid re-fetch inconsistency
+    let root: GantryLayoutNode[];
+    let layoutPreset: unknown;
+    if (options.snapshotId) {
+      const snap = this.readSnapshot(options.snapshotId) as Record<string, unknown>;
+      if (!snap) return { success: false, message: `Snapshot not found: ${options.snapshotId}` };
+      const payload = (snap.payload || {}) as Record<string, unknown>;
+      root = JSON.parse(JSON.stringify(
+        (payload.root || (payload.layout as Record<string, unknown> | undefined)?.root) || []
+      )) as GantryLayoutNode[];
+      layoutPreset = payload.preset;
+      const rootCacheKey = `${this.getGantryThemeKey(options.theme)}::${outline}`;
+      this.gantryLayoutRootCache.set(rootCacheKey, { root: JSON.parse(JSON.stringify(root)) as GantryLayoutNode[], preset: layoutPreset });
+    } else {
+      const layout = await this.getGantry5Layout(outline, { theme: options.theme, includeRaw: true });
+      if (!layout.success) return layout;
+      const data = layout.data as Record<string, unknown>;
+      root = data.root as GantryLayoutNode[];
+      layoutPreset = data.preset;
+    }
     const found = this.findGantryLayoutNode(root, nodeId);
     if (!found) return { success: false, message: `Layout node not found: ${nodeId}` };
 
@@ -3417,7 +4580,7 @@ export class JoomlaClient {
       };
     }
 
-    const save = await this.saveGantry5LayoutRaw(outline, { root, preset: data.preset, theme: options.theme });
+    const save = await this.saveGantry5LayoutRaw(outline, { root, preset: layoutPreset, snapshotId: options.snapshotId, theme: options.theme });
     return {
       success: save.success,
       message: save.success ? "Gantry 5 layout node attributes updated" : save.message,
@@ -3479,7 +4642,7 @@ export class JoomlaClient {
     outline = "default",
     nodeId: string,
     targetParentId: string,
-    options: { theme?: string; dryRun?: boolean } = {}
+    options: { theme?: string; dryRun?: boolean; snapshotId?: string } = {}
   ): Promise<JoomlaResponse> {
     const layout = await this.getGantry5Layout(outline, { theme: options.theme, includeRaw: true });
     if (!layout.success) return layout;
@@ -3514,7 +4677,7 @@ export class JoomlaClient {
       };
     }
 
-    const save = await this.saveGantry5LayoutRaw(outline, { root, preset: data.preset, theme: options.theme });
+    const save = await this.saveGantry5LayoutRaw(outline, { root, preset: data.preset, snapshotId: options.snapshotId, theme: options.theme });
     return {
       success: save.success,
       message: save.success ? "Gantry 5 layout node moved" : save.message,
@@ -3526,7 +4689,7 @@ export class JoomlaClient {
     outline = "default",
     targetParentId: string,
     particleType: string,
-    data: { title?: string; attributes?: Record<string, unknown>; particleId?: string; theme?: string; dryRun?: boolean } = {}
+    data: { title?: string; attributes?: Record<string, unknown>; particleId?: string; theme?: string; dryRun?: boolean; snapshotId?: string } = {}
   ): Promise<JoomlaResponse> {
     const layout = await this.getGantry5Layout(outline, { theme: data.theme, includeRaw: true });
     if (!layout.success) return layout;
@@ -3556,7 +4719,7 @@ export class JoomlaClient {
       };
     }
 
-    const save = await this.saveGantry5LayoutRaw(outline, { root, preset: layoutData.preset, theme: data.theme });
+    const save = await this.saveGantry5LayoutRaw(outline, { root, preset: layoutData.preset, snapshotId: data.snapshotId, theme: data.theme });
     return {
       success: save.success,
       message: save.success ? "Gantry 5 particle instance added" : save.message,
@@ -3567,7 +4730,7 @@ export class JoomlaClient {
   async deleteGantry5LayoutNode(
     outline = "default",
     nodeId: string,
-    options: { theme?: string; dryRun?: boolean } = {}
+    options: { theme?: string; dryRun?: boolean; snapshotId?: string } = {}
   ): Promise<JoomlaResponse> {
     const layout = await this.getGantry5Layout(outline, { theme: options.theme, includeRaw: true });
     if (!layout.success) return layout;
@@ -3587,7 +4750,7 @@ export class JoomlaClient {
       };
     }
 
-    const save = await this.saveGantry5LayoutRaw(outline, { root, preset: data.preset, theme: options.theme });
+    const save = await this.saveGantry5LayoutRaw(outline, { root, preset: data.preset, snapshotId: options.snapshotId, theme: options.theme });
     return {
       success: save.success,
       message: save.success ? "Gantry 5 layout node deleted" : save.message,
@@ -3595,7 +4758,21 @@ export class JoomlaClient {
     };
   }
 
-  async toggleModule(id: string, state: string): Promise<JoomlaResponse> {
+  async toggleModule(id: string, state: string, options: { expectedTitle?: string; expectedModuleType?: string } = {}): Promise<JoomlaResponse> {
+    const before = await this.getModule(id);
+    const moduleBefore = (before.data || {}) as Record<string, unknown>;
+    const title = String(moduleBefore.title || "");
+    const moduleType = String(moduleBefore.moduleType || "");
+    if (!before.success) {
+      return { success: false, message: `Refusing to change module ${id} because the current target could not be verified` };
+    }
+    if (options.expectedTitle && title !== options.expectedTitle) {
+      return { success: false, message: `Refusing to change module ${id}: expected title ${options.expectedTitle}, found ${title}` };
+    }
+    if (options.expectedModuleType && moduleType !== options.expectedModuleType) {
+      return { success: false, message: `Refusing to change module ${id}: expected moduleType ${options.expectedModuleType}, found ${moduleType}` };
+    }
+
     const listUrl = this.getAdminUrl("index.php?option=com_modules&view=modules");
     const { html } = await this.getPage(listUrl);
     const token = this.extractCsrfToken(html);
@@ -3626,10 +4803,12 @@ export class JoomlaClient {
         ? `Module ${state === "1" ? "published" : "unpublished"}`
         : (errorMsg ? errorMsg[1].trim() : successMsg ? "Module state was not verified after submit" : "Unknown result"),
       data: this.buildOperationData("module", id, {
-        title: String(module.title || ""),
+        title: String(module.title || title),
         state: actualState,
+        moduleType,
         verification: {
           attempted: true,
+          preflightVerified: true,
           requestedState: state,
           actualState,
           verified,
@@ -3704,13 +4883,23 @@ export class JoomlaClient {
     const result = await this.postPage(url, formData);
     const successMsg = /menu saved|has been saved|item saved/i.test(result.html);
     const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
+    const listResult = await this.listMenus();
+    const menus = Array.isArray(listResult.data) ? listResult.data as Array<Record<string, string>> : [];
+    const savedMenu = menus.find((menu) => menu.title === data.title && menu.menuType === menuType);
+    const verified = !!savedMenu;
 
     return {
-      success: successMsg,
-      message: successMsg ? "Menu saved" : (errorMsg ? errorMsg[1].trim() : "Unknown result"),
+      success: verified,
+      message: verified ? "Menu saved" : (errorMsg ? errorMsg[1].trim() : successMsg ? "Menu save submitted, but creation was not verified" : "Unknown result"),
       data: {
+        id: String(savedMenu?.id || ""),
         title: data.title,
         menuType,
+        verification: {
+          attempted: true,
+          foundInList: verified,
+          verified,
+        },
       },
       html: result.html,
     };
@@ -3734,6 +4923,7 @@ export class JoomlaClient {
             title,
             state: this.extractPublishedState(row),
             type: typeMatch ? this.stripHtml(typeMatch[1]) : "",
+            checkedOut: /checked[-_ ]?out|icon-lock|fa-lock/i.test(row) ? "1" : "0",
           });
         }
       }
@@ -3897,18 +5087,39 @@ export class JoomlaClient {
       const exactMatches = items.filter((item) => item.title === data.title);
       savedId = exactMatches[exactMatches.length - 1]?.id || "";
     }
+    const verify = savedId ? await this.getMenuItem(savedId) : null;
+    const item = ((verify?.data || {}) as Record<string, unknown>);
+    const verification = {
+      attempted: true,
+      foundInList: !!savedId,
+      readbackSucceeded: !!verify?.success,
+      titleMatches: !!verify?.success && String(item.title || "") === data.title,
+      aliasMatches: !!verify?.success && this.verifyAlias(String(item.alias || ""), data.alias),
+      menuTypeMatches: !!verify?.success && String(item.menuType || "") === data.menuType,
+      parentMatches: !!verify?.success && String(item.parentId || "") === String(data.parentId || "1"),
+      publishedMatches: !!verify?.success && String(item.published || "") === String(data.published ?? "1"),
+      accessMatches: !!verify?.success && String(item.access || "") === String(data.access || "1"),
+      languageMatches: !!verify?.success && String(item.language || "") === String(data.language || "*"),
+      browserNavMatches: !!verify?.success && String(item.browserNav || "") === String(data.browserNav || "0"),
+      homeMatches: !!verify?.success && String(item.home || "") === String(data.home || "0"),
+    };
+    const verified = Object.values(verification).every((value) => value === true);
 
     return {
-      success: successMsg,
-      message: successMsg ? "Menu item saved" : (errorMsg ? errorMsg[1].trim() : "Unknown result"),
-      data: {
-        id: savedId,
-        title: data.title,
-        alias: data.alias || "",
-        menuType: data.menuType,
-        parentId: data.parentId || "1",
+      success: verified,
+      message: verified ? "Menu item saved" : (errorMsg ? errorMsg[1].trim() : successMsg ? "Menu item save submitted, but creation was not verified" : "Unknown result"),
+      data: this.buildOperationData("menuItem", savedId, {
+        title: String(item.title || data.title),
+        state: String(item.published || data.published || "1"),
+        alias: String(item.alias || data.alias || ""),
+        menuType: String(item.menuType || data.menuType),
+        parentId: String(item.parentId || data.parentId || "1"),
         itemType: type.title || data.itemType,
-      },
+        verification: {
+          ...verification,
+          verified,
+        },
+      }),
       html: result.html,
     };
   }
@@ -3984,15 +5195,57 @@ export class JoomlaClient {
     const result = await this.postPage(editUrl, formData);
     const successMsg = /menu item saved|item saved|has been saved/i.test(result.html);
     const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
+    const verify = await this.getMenuItem(id);
+    const item = (verify.data || {}) as Record<string, unknown>;
+    const verification = {
+      attempted: true,
+      readbackSucceeded: verify.success,
+      titleMatches: !!verify.success && String(item.title || "") === String(formData["jform[title]"] || ""),
+      aliasMatches: !!verify.success && String(item.alias || "") === String(formData["jform[alias]"] || ""),
+      menuTypeMatches: !!verify.success && String(item.menuType || "") === String(formData["jform[menutype]"] || ""),
+      parentMatches: !!verify.success && String(item.parentId || "") === String(formData["jform[parent_id]"] || ""),
+      publishedMatches: !!verify.success && String(item.published || "") === String(formData["jform[published]"] || ""),
+      accessMatches: !!verify.success && String(item.access || "") === String(formData["jform[access]"] || ""),
+      languageMatches: !!verify.success && String(item.language || "") === String(formData["jform[language]"] || ""),
+      browserNavMatches: !!verify.success && String(item.browserNav || "") === String(formData["jform[browserNav]"] || ""),
+      homeMatches: !!verify.success && String(item.home || "") === String(formData["jform[home]"] || ""),
+      noteMatches: !!verify.success && String(item.note || "") === String(formData["jform[note]"] || ""),
+    };
+    const verified = Object.values(verification).every((value) => value === true);
 
     return {
-      success: successMsg,
-      message: successMsg ? "Menu item saved" : (errorMsg ? errorMsg[1].trim() : "Unknown result"),
+      success: verified,
+      message: verified ? "Menu item saved" : (errorMsg ? errorMsg[1].trim() : successMsg ? "Menu item save submitted, but updated values were not verified" : "Unknown result"),
+      data: this.buildOperationData("menuItem", id, {
+        title: String(item.title || formData["jform[title]"] || ""),
+        state: String(item.published || formData["jform[published]"] || ""),
+        alias: String(item.alias || formData["jform[alias]"] || ""),
+        menuType: String(item.menuType || formData["jform[menutype]"] || ""),
+        parentId: String(item.parentId || formData["jform[parent_id]"] || ""),
+        verification: {
+          ...verification,
+          verified,
+        },
+      }),
       html: result.html,
     };
   }
 
-  async deleteMenuItem(id: string): Promise<JoomlaResponse> {
+  async deleteMenuItem(id: string, options: { expectedTitle?: string; expectedMenuType?: string; menuType?: string } = {}): Promise<JoomlaResponse> {
+    const before = await this.getMenuItem(id);
+    const item = (before.data || {}) as Record<string, unknown>;
+    const title = String(item.title || "");
+    const menuType = options.menuType || String(item.menuType || "");
+    if (!before.success) {
+      return { success: false, message: `Refusing to delete menu item ${id} because the current target could not be verified` };
+    }
+    if (options.expectedTitle && title !== options.expectedTitle) {
+      return { success: false, message: `Refusing to delete menu item ${id}: expected title ${options.expectedTitle}, found ${title}` };
+    }
+    if (options.expectedMenuType && menuType !== options.expectedMenuType) {
+      return { success: false, message: `Refusing to delete menu item ${id}: expected menuType ${options.expectedMenuType}, found ${menuType}` };
+    }
+
     const listUrl = this.getAdminUrl("index.php?option=com_menus&view=items");
     const { html } = await this.getPage(listUrl);
     const token = this.extractCsrfToken(html);
@@ -4010,16 +5263,50 @@ export class JoomlaClient {
     const result = await this.postPage(listUrl, formData);
     const successMsg = /menu item[s]?\s+(trashed|deleted)|item[s]?\s+(trashed|deleted)|has been (trashed|deleted)/i.test(result.html);
     const errorMsg = result.html.match(/class="alert-message"[^>]*>([^<]+)<\/div>/);
+    const listResult = menuType ? await this.listMenuItems(menuType) : null;
+    const items = Array.isArray(listResult?.data) ? listResult?.data as Array<Record<string, string>> : [];
+    const stillListed = items.some((entry) => entry.id === id);
+    const verify = await this.getMenuItem(id);
+    const verified = this.isDeletionVerified(stillListed, verify, ["published", "state"]);
 
     return {
-      success: successMsg,
-      message: successMsg ? "Menu item trashed" : (errorMsg ? errorMsg[1].trim() : "Unknown result"),
+      success: verified,
+      message: verified
+        ? "Menu item trashed"
+        : (errorMsg ? errorMsg[1].trim() : successMsg ? "Menu item trash submitted, but deletion was not verified" : "Unknown result"),
+      data: this.buildOperationData("menuItem", id, {
+        title,
+        state: "-2",
+        menuType,
+        verification: {
+          attempted: true,
+          preflightVerified: true,
+          listCheckAttempted: !!menuType,
+          stillListed,
+          readbackSucceeded: verify.success,
+          verified,
+        },
+      }),
       html: result.html,
     };
   }
 
-  async toggleMenuItem(id: string, state: string, menuType?: string): Promise<JoomlaResponse> {
-    const listUrl = this.getMenuItemsListUrl(menuType);
+  async toggleMenuItem(id: string, state: string, menuType?: string, options: { expectedTitle?: string; expectedMenuType?: string } = {}): Promise<JoomlaResponse> {
+    const before = await this.getMenuItem(id);
+    const itemBefore = (before.data || {}) as Record<string, unknown>;
+    const title = String(itemBefore.title || "");
+    const actualMenuType = menuType || String(itemBefore.menuType || "");
+    if (!before.success) {
+      return { success: false, message: `Refusing to change menu item ${id} because the current target could not be verified` };
+    }
+    if (options.expectedTitle && title !== options.expectedTitle) {
+      return { success: false, message: `Refusing to change menu item ${id}: expected title ${options.expectedTitle}, found ${title}` };
+    }
+    if (options.expectedMenuType && actualMenuType !== options.expectedMenuType) {
+      return { success: false, message: `Refusing to change menu item ${id}: expected menuType ${options.expectedMenuType}, found ${actualMenuType}` };
+    }
+
+    const listUrl = this.getMenuItemsListUrl(actualMenuType);
     const { html } = await this.getPage(listUrl);
     const token = this.extractCsrfToken(html);
 
@@ -4047,22 +5334,37 @@ export class JoomlaClient {
         ? `Menu item ${state === "1" ? "published" : "unpublished"}`
         : (errorMsg ? errorMsg[1].trim() : successMsg ? `Menu item state was not verified after ${task}` : "Unknown result"),
       data: this.buildOperationData("menuItem", id, {
-        title: String(item.title || ""),
+        title: String(item.title || title),
         state: actualState,
         verification: {
           attempted: true,
+          preflightVerified: true,
           requestedState: state,
           actualState,
           verified,
         },
-        menuType: menuType || "",
+        menuType: actualMenuType,
       }),
       html: result.html,
     };
   }
 
-  async checkInMenuItem(id: string, menuType?: string): Promise<JoomlaResponse> {
-    const listUrl = this.getMenuItemsListUrl(menuType);
+  async checkInMenuItem(id: string, menuType?: string, options: { expectedTitle?: string; expectedMenuType?: string } = {}): Promise<JoomlaResponse> {
+    const before = await this.getMenuItem(id);
+    const itemBefore = (before.data || {}) as Record<string, unknown>;
+    const title = String(itemBefore.title || "");
+    const actualMenuType = menuType || String(itemBefore.menuType || "");
+    if (!before.success) {
+      return { success: false, message: `Refusing to check in menu item ${id} because the current target could not be verified` };
+    }
+    if (options.expectedTitle && title !== options.expectedTitle) {
+      return { success: false, message: `Refusing to check in menu item ${id}: expected title ${options.expectedTitle}, found ${title}` };
+    }
+    if (options.expectedMenuType && actualMenuType !== options.expectedMenuType) {
+      return { success: false, message: `Refusing to check in menu item ${id}: expected menuType ${options.expectedMenuType}, found ${actualMenuType}` };
+    }
+
+    const listUrl = this.getMenuItemsListUrl(actualMenuType);
     const { html } = await this.getPage(listUrl);
     const token = this.extractCsrfToken(html);
 
@@ -4081,19 +5383,26 @@ export class JoomlaClient {
 
     const verify = await this.getMenuItem(id);
     const item = (verify.data || {}) as Record<string, unknown>;
-    const ok = (successMsg || !errorMsg) && verify.success;
+    const listed = await this.listMenuItems(actualMenuType);
+    const listedItems = (listed.data || []) as Array<Record<string, string>>;
+    const listedItem = listedItems.find((entry) => entry.id === id);
+    const checkedOutCleared = !!listedItem && listedItem.checkedOut !== "1";
+    const ok = this.isCheckInVerified(successMsg, verify, checkedOutCleared);
 
     return {
       success: ok,
-      message: ok ? "Menu item checked in" : (errorMsg ? errorMsg[1].trim() : "Menu item check-in submitted"),
+      message: ok ? "Menu item checked in" : (errorMsg ? errorMsg[1].trim() : successMsg ? "Menu item check-in submitted, but checkout state was not verified as cleared" : "Menu item check-in submitted"),
       data: this.buildOperationData("menuItem", id, {
-        title: String(item.title || ""),
+        title: String(item.title || title),
         state: String(item.published || ""),
         verification: {
           attempted: true,
+          preflightVerified: true,
           existsAfterCheckIn: verify.success,
+          listedAfterCheckIn: !!listedItem,
+          checkedOutCleared,
         },
-        menuType: menuType || "",
+        menuType: actualMenuType,
       }),
       html: result.html,
     };

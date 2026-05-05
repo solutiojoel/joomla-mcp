@@ -1,0 +1,448 @@
+{
+  "kind": "gantryLayout",
+  "outline": "base",
+  "theme": "rt_studius",
+  "payload": {
+    "theme": "rt_studius",
+    "outline": "base",
+    "tab": "layout",
+    "url": "https://defaults-agent.forge.solutiosoftware.com/administrator/index.php?option=com_gantry5&view=configurations/default/layout&theme=rt_studius&e239196f439859d5d497e2cff7e5758b=1",
+    "tabs": {
+      "layout": "/administrator/index.php?option=com_gantry5&view=configurations/default/layout&theme=rt_studius&e239196f439859d5d497e2cff7e5758b=1",
+      "styles": "/administrator/index.php?option=com_gantry5&view=configurations/default/styles&theme=rt_studius&e239196f439859d5d497e2cff7e5758b=1",
+      "settings": "/administrator/index.php?option=com_gantry5&view=configurations/default/settings&theme=rt_studius&e239196f439859d5d497e2cff7e5758b=1",
+      "page": "/administrator/index.php?option=com_gantry5&view=configurations/default/page&theme=rt_studius&e239196f439859d5d497e2cff7e5758b=1"
+    },
+    "preset": {
+      "0": "default",
+      "name": "",
+      "timestamp": 0,
+      "image": "gantry-admin://images/layouts/default.png"
+    },
+    "particleCatalog": [
+      {
+        "blockType": "position",
+        "subtype": "module",
+        "icon": "fa-object-ungroup",
+        "title": "Module Instance",
+        "disabled": false,
+        "noDrag": false,
+        "note": ""
+      },
+      {
+        "blockType": "position",
+        "subtype": "position",
+        "icon": "fa-object-group",
+        "title": "Module Position",
+        "disabled": false,
+        "noDrag": false,
+        "note": ""
+      },
+      {
+        "blockType": "spacer",
+        "subtype": "spacer",
+        "icon": "fa-arrows-h fa-arrows-alt-h",
+        "title": "Spacer",
+        "disabled": false,
+        "noDrag": false,
+        "note": ""
+      },
+      {
+        "blockType": "system",
+        "subtype": "content",
+        "icon": "far fa-file-alt",
+        "title": "Page Content",
+        "disabled": false,
+        "noDrag": false,
+        "note": ""
+      },
+      {
+        "blockType": "system",
+        "subtype": "messages",
+        "icon": "fa-exclamation-circle",
+        "title": "System Messages",
+        "disabled": false,
+        "noDrag": false,
+        "note": ""
+      },
+      {
+        "blockType": "particle",
+        "subtype": "blockcontent",
+        "icon": "fa-th-large",
+        "title": "Block Content",
+        "disabled": false,
+        "noDrag": false,
+        "note": ""
+      },
+      {
+        "blockType": "particle",
+        "subtype": "branding",
+        "icon": "fa-trademark",
+        "title": "Branding",
+        "disabled": true,
+        "noDrag": true,
+        "note": "This particle has been disabled from the Settings Panel and it cannot be added into the Layout"
+      },
+      {
+        "blockType": "particle",
+        "subtype": "button",
+        "icon": "fa-battery-4",
+        "title": "Button",
+        "disabled": true,
+        "noDrag": true,
+        "note": "This particle has been disabled from the Settings Panel and it cannot be added into the Layout"
+      },
+      {
+        "blockType": "particle",
+        "subtype": "comments",
+        "icon": "fa-comment",
+        "title": "Comments Slider",
+        "disabled": true,
+        "noDrag": true,
+        "note": "This particle has been disabled from the Settings Panel and it cannot be added into the Layout"
+      },
+      {
+        "blockType": "particle",
+        "subtype": "comparisontable",
+        "icon": "fa-table",
+        "title": "Comparison Table",
+        "disabled": true,
+        "noDrag": true,
+        "note": "This particle has been disabled from the Settings Panel and it cannot be added into the Layout"
+      },
+      {
+        "blockType": "particle",
+        "subtype": "copyright",
+        "icon": "fa-copyright",
+        "title": "Copyright",
+        "disabled": true,
+        "noDrag": true,
+        "note": "This particle has been disabled from the Settings Panel and it cannot be added into the Layout"
+      },
+      {
+        "blockType": "particle",
+        "subtype": "custom",
+        "icon": "fa-code",
+        "title": "Custom HTML",
+        "disabled": false,
+        "noDrag": false,
+        "note": ""
+      },
+      {
+        "blockType": "particle",
+        "subtype": "date",
+        "icon": "fa-calendar",
+        "title": "Date",
+        "disabled": true,
+        "noDrag": true,
+        "note": "This particle has been disabled from the Settings Panel and it cannot be added into the Layout"
+      },
+      {
+        "blockType": "particle",
+        "subtype": "gridstatistic",
+        "icon": "fa-sort-numeric-asc",
+        "title": "Grid Statistic",
+        "disabled": false,
+        "noDrag": false,
+        "note": ""
+      },
+      {
+        "blockType": "particle",
+        "subtype": "heading",
+        "icon": "fa-font",
+        "title": "Heading",
+        "disabled": true,
+        "noDrag": true,
+        "note": "This particle has been disabled from the Settings Panel and it cannot be added into the Layout"
+      },
+      {
+        "blockType": "particle",
+        "subtype": "horizmenu",
+        "icon": "fa-forward",
+        "title": "Horizontal Menu",
+        "disabled": true,
+        "noDrag": true,
+        "note": "This particle has been disabled from the Settings Panel and it cannot be added into the Layout"
+      },
+      {
+        "blockType": "particle",
+        "subtype": "iconpromo",
+        "icon": "fa-file",
+        "title": "Icon Promo",
+        "disabled": true,
+        "noDrag": true,
+        "note": "This particle has been disabled from the Settings Panel and it cannot be added into the Layout"
+      },
+      {
+        "blockType": "particle",
+        "subtype": "image",
+        "icon": "fa-file-image-o",
+        "title": "Image",
+        "disabled": false,
+        "noDrag": false,
+        "note": ""
+      },
+      {
+        "blockType": "particle",
+        "subtype": "imagegrid",
+        "icon": "fa-picture-o",
+        "title": "Image Grid",
+        "disabled": true,
+        "noDrag": true,
+        "note": "This particle has been disabled from the Settings Panel and it cannot be added into the Layout"
+      },
+      {
+        "blockType": "particle",
+        "subtype": "infolist",
+        "icon": "fa-info-circle",
+        "title": "Info List",
+        "disabled": true,
+        "noDrag": true,
+        "note": "This particle has been disabled from the Settings Panel and it cannot be added into the Layout"
+      },
+      {
+        "blockType": "particle",
+        "subtype": "contentarray",
+        "icon": "fa-joomla fab",
+        "title": "Joomla Articles",
+        "disabled": false,
+        "noDrag": false,
+        "note": ""
+      },
+      {
+        "blockType": "particle",
+        "subtype": "latestnews",
+        "icon": "fa-newspaper-o",
+        "title": "Latest News",
+        "disabled": true,
+        "noDrag": true,
+        "note": "This particle has been disabled from the Settings Panel and it cannot be added into the Layout"
+      },
+      {
+        "blockType": "particle",
+        "subtype": "logo",
+        "icon": "fa-file-image-o",
+        "title": "Logo / Image",
+        "disabled": false,
+        "noDrag": false,
+        "note": ""
+      },
+      {
+        "blockType": "particle",
+        "subtype": "logos",
+        "icon": "fa-apple",
+        "title": "Logos",
+        "disabled": true,
+        "noDrag": true,
+        "note": "This particle has been disabled from the Settings Panel and it cannot be added into the Layout"
+      },
+      {
+        "blockType": "particle",
+        "subtype": "menu",
+        "icon": "fa-bars",
+        "title": "Menu",
+        "disabled": false,
+        "noDrag": false,
+        "note": ""
+      },
+      {
+        "blockType": "particle",
+        "subtype": "mobile-menu",
+        "icon": "fa-ellipsis-v",
+        "title": "Mobile Menu",
+        "disabled": false,
+        "noDrag": false,
+        "note": ""
+      },
+      {
+        "blockType": "particle",
+        "subtype": "news",
+        "icon": "fa-newspaper",
+        "title": "News",
+        "disabled": true,
+        "noDrag": true,
+        "note": "This particle has been disabled from the Settings Panel and it cannot be added into the Layout"
+      },
+      {
+        "blockType": "particle",
+        "subtype": "newsletter",
+        "icon": "fa-file-text-o",
+        "title": "Newsletter",
+        "disabled": true,
+        "noDrag": true,
+        "note": "This particle has been disabled from the Settings Panel and it cannot be added into the Layout"
+      },
+      {
+        "blockType": "particle",
+        "subtype": "popupmodule",
+        "icon": "fa-clone",
+        "title": "Popup Module",
+        "disabled": true,
+        "noDrag": true,
+        "note": "This particle has been disabled from the Settings Panel and it cannot be added into the Layout"
+      },
+      {
+        "blockType": "particle",
+        "subtype": "pricingtable",
+        "icon": "fa-table",
+        "title": "Pricing Table",
+        "disabled": false,
+        "noDrag": false,
+        "note": ""
+      },
+      {
+        "blockType": "particle",
+        "subtype": "promo",
+        "icon": "fa-file",
+        "title": "Promo",
+        "disabled": true,
+        "noDrag": true,
+        "note": "This particle has been disabled from the Settings Panel and it cannot be added into the Layout"
+      },
+      {
+        "blockType": "particle",
+        "subtype": "quote",
+        "icon": "fa-quote-right",
+        "title": "Quote",
+        "disabled": true,
+        "noDrag": true,
+        "note": "This particle has been disabled from the Settings Panel and it cannot be added into the Layout"
+      },
+      {
+        "blockType": "particle",
+        "subtype": "search",
+        "icon": "fa-search",
+        "title": "Search",
+        "disabled": false,
+        "noDrag": false,
+        "note": ""
+      },
+      {
+        "blockType": "particle",
+        "subtype": "showcase",
+        "icon": "fa-camera-retro",
+        "title": "Showcase",
+        "disabled": true,
+        "noDrag": true,
+        "note": "This particle has been disabled from the Settings Panel and it cannot be added into the Layout"
+      },
+      {
+        "blockType": "particle",
+        "subtype": "simplecontent",
+        "icon": "fa-file-text-o",
+        "title": "Simple Content",
+        "disabled": false,
+        "noDrag": false,
+        "note": ""
+      },
+      {
+        "blockType": "particle",
+        "subtype": "simplecounter",
+        "icon": "fa-calendar-plus-o",
+        "title": "Simple Counter",
+        "disabled": true,
+        "noDrag": true,
+        "note": "This particle has been disabled from the Settings Panel and it cannot be added into the Layout"
+      },
+      {
+        "blockType": "particle",
+        "subtype": "simplemenu",
+        "icon": "fa-forward",
+        "title": "Simple Menu",
+        "disabled": true,
+        "noDrag": true,
+        "note": "This particle has been disabled from the Settings Panel and it cannot be added into the Layout"
+      },
+      {
+        "blockType": "particle",
+        "subtype": "slider",
+        "icon": "fa-youtube-play",
+        "title": "Slider",
+        "disabled": false,
+        "noDrag": false,
+        "note": ""
+      },
+      {
+        "blockType": "particle",
+        "subtype": "social",
+        "icon": "fa-share-alt",
+        "title": "Social",
+        "disabled": false,
+        "noDrag": false,
+        "note": ""
+      },
+      {
+        "blockType": "particle",
+        "subtype": "swiper",
+        "icon": "fa-sliders",
+        "title": "Swiper",
+        "disabled": false,
+        "noDrag": false,
+        "note": ""
+      },
+      {
+        "blockType": "particle",
+        "subtype": "testimonials",
+        "icon": "fa-users",
+        "title": "Testimonials",
+        "disabled": true,
+        "noDrag": true,
+        "note": "This particle has been disabled from the Settings Panel and it cannot be added into the Layout"
+      },
+      {
+        "blockType": "particle",
+        "subtype": "timeline",
+        "icon": "fa-calendar",
+        "title": "Timeline",
+        "disabled": false,
+        "noDrag": false,
+        "note": ""
+      },
+      {
+        "blockType": "particle",
+        "subtype": "totop",
+        "icon": "fa-chevron-up",
+        "title": "To Top",
+        "disabled": false,
+        "noDrag": false,
+        "note": ""
+      },
+      {
+        "blockType": "particle",
+        "subtype": "stories",
+        "icon": "fa-users",
+        "title": "User Stories",
+        "disabled": true,
+        "noDrag": true,
+        "note": "This particle has been disabled from the Settings Panel and it cannot be added into the Layout"
+      },
+      {
+        "blockType": "particle",
+        "subtype": "video",
+        "icon": "fa-video-camera",
+        "title": "Video",
+        "disabled": false,
+        "noDrag": false,
+        "note": ""
+      }
+    ],
+    "layout": {
+      "counts": {
+        "nodes": 0,
+        "sections": 0,
+        "particles": 0,
+        "positions": 0,
+        "moduleInstances": 0
+      },
+      "sections": [],
+      "particles": [],
+      "positions": [],
+      "moduleInstances": [],
+      "nodes": []
+    },
+    "root": []
+  },
+  "id": "2026-04-30T16-03-55-470Z-gantryLayout-1afd5548",
+  "snapshotId": "2026-04-30T16-03-55-470Z-gantryLayout-1afd5548",
+  "createdAt": "2026-04-30T16:03:55.471Z"
+}

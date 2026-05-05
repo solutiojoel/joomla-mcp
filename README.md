@@ -93,6 +93,8 @@ The server currently exposes the following tools.
 - `joomla_list_module_positions`
 - `joomla_inspect_module_type`
 - `joomla_get_module`
+- `joomla_export_module_blueprint`
+- `joomla_import_module_blueprint`
 - `joomla_create_module`
 - `joomla_update_module`
 - `joomla_delete_module` (trash)

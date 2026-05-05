@@ -1,0 +1,43 @@
+{
+  "servers": {
+    "joomla-mcp": {
+      "type": "stdio",
+      "command": "node",
+      "cwd": "${workspaceFolder}",
+      "args": [
+        "dist/index.js"
+      ],
+      "dev": {
+        "watch": "src/**/*.ts",
+        "debug": {
+          "type": "node"
+        }
+      }
+    },
+    "site-build-prompt-server": {
+      "type": "stdio",
+      "command": "node",
+      "cwd": "${workspaceFolder}",
+      "args": [
+        "--import",
+        "tsx",
+        "site-build-prompt-server/src/index.ts"
+      ],
+      "dev": {
+        "watch": "site-build-prompt-server/src/**/*.ts",
+        "debug": {
+          "type": "node"
+        }
+      }
+    },
+    "ftpServer": {
+      "type": "stdio",
+      "command": "node",
+      "cwd": "${workspaceFolder}",
+      "args": [
+        ".mcp-vendors/mcp-server-ftp/build/index.js"
+      ],
+      "envFile": "${workspaceFolder}/.env"
+    }
+  }
+}

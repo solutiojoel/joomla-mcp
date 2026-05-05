@@ -1,0 +1,201 @@
+version: 1
+site:
+  siteName: SS Peter & Paul / St. Mary's
+  siteCode: SSPPM
+  siteUrl: https://www.sspeterpaulandmary.org/
+  adminBaseUrl: https://defaults-agent.forge.solutiosoftware.com/administrator
+  menuTitle: Main Menu SSPPM
+  menuType: mainmenu
+  notes: |
+    Build the Forge Joomla site from the public SSPP/SM/ST pastorate site.
+    The current source site is eCatholic and includes a shared pastorate identity for three churches.
+    First-pass build scope covers the visible top-level navigation, homepage summary content, and key utility pages.
+contentDefaults:
+  pageCategoryTitle: Page Content
+  homepageArticlesCategoryTitle: Homepage Articles
+  newsCategoryTitle: News
+  eventsCategoryTitle: Events
+  alertsCategoryTitle: Alerts
+  documentsCategoryTitle: Documents
+menuItems:
+  - key: home
+    title: Home
+    alias: home
+    parentKey: null
+    home: true
+    pageType: homepage
+    content:
+      mode: auto_generate
+      guidance: |
+        Create a welcoming pastorate homepage for SS Peter & Paul, St. Mary's, and St. Timothy's.
+        Include a concise intro, quick access to Mass & Confession, Bulletins, Faith Formation, Donation, and Contact Us.
+        Mention the Sunday Mass livestream and current parish announcements.
+      sourceUrl: https://www.sspeterpaulandmary.org/
+      sourceArticleId: ''
+      sourceArticleTitle: ''
+      sourceSiteLabel: source homepage
+      cleanupNotes: Preserve the three-church identity and Cass County locations.
+      html: ''
+    artworkNotes: |
+      Hero should feel warm and parish-appropriate, using welcoming church/community imagery.
+      Preserve the three-parish identity and make Mass times and quicklinks visually prominent.
+    modules: []
+  - key: about
+    title: About
+    alias: about
+    parentKey: null
+    home: false
+    pageType: article
+    content:
+      mode: pull_url
+      guidance: Preserve the pastorate overview and shared identity language.
+      sourceUrl: https://www.sspeterpaulandmary.org/about-us
+      sourceArticleId: ''
+      sourceArticleTitle: About
+      sourceSiteLabel: public site
+      cleanupNotes: Preserve the Our Pastorate section and church addresses.
+      html: ''
+    artworkNotes: ''
+    modules: []
+  - key: mass-confession
+    title: Mass & Confession
+    alias: mass-confession
+    parentKey: null
+    home: false
+    pageType: article
+    content:
+      mode: pull_url
+      guidance: Preserve the Mass and confession schedule for all three churches in a readable table/list.
+      sourceUrl: https://www.sspeterpaulandmary.org/mass-amp-confession
+      sourceArticleId: ''
+      sourceArticleTitle: "Mass & Confession"
+      sourceSiteLabel: public site
+      cleanupNotes: Preserve church-specific schedule groupings and the daily readings section as an optional callout.
+      html: ''
+    artworkNotes: ''
+    modules: []
+  - key: contact
+    title: Contact Us
+    alias: contact-us
+    parentKey: null
+    home: false
+    pageType: article
+    content:
+      mode: pull_url
+      guidance: Preserve parish office contact details, office hours, and the three church locations.
+      sourceUrl: https://www.sspeterpaulandmary.org/contact-us
+      sourceArticleId: ''
+      sourceArticleTitle: Contact Us
+      sourceSiteLabel: public site
+      cleanupNotes: Keep phone, office email, office hours, and all church addresses.
+      html: ''
+    artworkNotes: ''
+    modules: []
+  - key: sacraments
+    title: Sacraments
+    alias: sacraments
+    parentKey: null
+    home: false
+    pageType: article
+    content:
+      mode: pull_url
+      guidance: Preserve the Becoming Catholic intro and turn sacrament links into follow-up menu/page candidates.
+      sourceUrl: https://www.sspeterpaulandmary.org/ocia
+      sourceArticleId: ''
+      sourceArticleTitle: Becoming Catholic
+      sourceSiteLabel: public site
+      cleanupNotes: Preserve Fr. Brad contact info and list the related sacrament pages as next-step links.
+      html: ''
+    artworkNotes: ''
+    modules: []
+  - key: faith-formation
+    title: Faith Formation
+    alias: faith-formation
+    parentKey: null
+    home: false
+    pageType: article
+    content:
+      mode: pull_url
+      guidance: Preserve registration, calendars, scholarship info, and committee details.
+      sourceUrl: https://www.sspeterpaulandmary.org/faith-formation-1
+      sourceArticleId: ''
+      sourceArticleTitle: Youth Faith Formation
+      sourceSiteLabel: public site
+      cleanupNotes: Preserve Google form registration link, calendar PDFs, coordinator contact, and committee roster.
+      html: ''
+    artworkNotes: ''
+    modules: []
+  - key: ministries
+    title: Ministries & Organizations
+    alias: ministries-organizations
+    parentKey: null
+    home: false
+    pageType: article
+    content:
+      mode: pull_url
+      guidance: Preserve the ministry schedule intro and list follow-on ministry pages as future submenu candidates.
+      sourceUrl: https://www.sspeterpaulandmary.org/ministers-schedule
+      sourceArticleId: ''
+      sourceArticleTitle: "Ministry Schedule: SSPP"
+      sourceSiteLabel: public site
+      cleanupNotes: Preserve current ministry schedule document links and cross-links to other organizations.
+      html: ''
+    artworkNotes: ''
+    modules: []
+  - key: bulletins
+    title: Bulletins
+    alias: bulletins
+    parentKey: null
+    home: false
+    pageType: article
+    content:
+      mode: pull_url
+      guidance: Preserve the bulletin archive structure with current-year links and a clear archive summary.
+      sourceUrl: https://www.sspeterpaulandmary.org/bulletins
+      sourceArticleId: ''
+      sourceArticleTitle: Bulletin
+      sourceSiteLabel: public site
+      cleanupNotes: Preserve bulletin archive links and present the current bulletin prominently.
+      html: ''
+    artworkNotes: ''
+    modules: []
+moduleCatalog: []
+homepage:
+  sourceOutlineBlueprint: blueprints/home-outline-remap-test.yaml
+  artworkNotes: |
+    Homepage composition should include hero, quicklinks, livestream/online Mass emphasis, parish announcements, and a practical footer/contact zone.
+    Keep the tone welcoming and Catholic without over-stylizing the design.
+  particles:
+    - section: top
+      particleType: contentarray
+      title: Parish Announcements
+      articleBinding:
+        mode: category
+        categoryTitle: Alerts
+        articleTitle: ''
+        total: 6
+        createIfMissing: true
+        generationNotes: Create a homepage announcements feed populated from parish notices.
+      notes: Pull from alert/news content rather than hardcoding.
+    - section: feature
+      particleType: contentarray
+      title: News & Events
+      articleBinding:
+        mode: category
+        categoryTitle: News
+        articleTitle: ''
+        total: 6
+        createIfMissing: true
+        generationNotes: Use parish announcements/news items as the visible homepage feed.
+      notes: ''
+    - section: utility
+      particleType: custom
+      title: Sunday Mass Livestream
+      articleBinding:
+        mode: explicit_article
+        categoryTitle: Homepage Articles
+        articleTitle: Sunday Mass Livestream
+        total: 1
+        createIfMissing: true
+        generationNotes: Create a short article pointing visitors to the weekly online Mass stream and archive behavior.
+      notes: Preserve the prominence of the livestream from the current homepage.
