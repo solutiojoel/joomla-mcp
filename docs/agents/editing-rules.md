@@ -60,5 +60,4 @@ When existing notes become stale or incorrect:
 Additional agent-specific guides are available as MCP resources. Only fetch them when performing that specific workflow:
 
 - `audit-agent` — site audit checklist
-- `builder-agent` — page and menu building workflow
 - `content-agent` — article and content editing workflow
