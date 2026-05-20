@@ -5082,6 +5082,11 @@ export class JoomlaClient {
     }
 
     const request = { ...((type?.request || existing.request) as Record<string, string>), ...(data.request || {}) };
+    const aliasTarget = data.params?.aliasoptions;
+    const effectiveType = type?.title ?? String(existing.type || "");
+    const aliasLink = aliasTarget && (effectiveType === "alias" || data.itemType === "alias")
+      ? `index.php?Itemid=${aliasTarget}`
+      : undefined;
     const formData: Record<string, string> = {
       ...this.extractFormFields(formBaseHtml),
       task: "item.save",
@@ -5089,7 +5094,7 @@ export class JoomlaClient {
       "jform[alias]": data.alias ?? String(existing.alias || ""),
       "jform[menutype]": data.menuType ?? String(existing.menuType || ""),
       "jform[type]": type?.encoded ?? String(existing.type || ""),
-      "jform[link]": data.link ?? (type ? this.buildLinkFromRequest(request) : String(existing.link || this.buildLinkFromRequest(request))),
+      "jform[link]": data.link ?? aliasLink ?? (type ? this.buildLinkFromRequest(request) : String(existing.link || this.buildLinkFromRequest(request))),
       "jform[parent_id]": data.parentId ?? String(existing.parentId || "1"),
       "jform[published]": data.published ?? String(existing.published || "1"),
       "jform[access]": data.access ?? String(existing.access || "1"),
@@ -5114,6 +5119,16 @@ export class JoomlaClient {
     }
 
     Object.assign(formData, data.fieldOverrides || {});
+
+    // For alias items: ensure jform[link] reflects the aliasoptions target so Joomla
+    // saves it correctly and the form readback returns the right value.
+    const overrideAlias = data.fieldOverrides?.["jform[params][aliasoptions]"];
+    if (overrideAlias && !data.link && !aliasLink) {
+      const effectiveFormType = formData["jform[type]"] || "";
+      if (effectiveFormType === "alias" || effectiveFormType.includes("alias")) {
+        formData["jform[link]"] = `index.php?Itemid=${overrideAlias}`;
+      }
+    }
 
     const result = await this.postPage(editUrl, formData);
     const successMsg = /menu item saved|item saved|has been saved/i.test(result.html);
