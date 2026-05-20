@@ -222,8 +222,9 @@ export class JoomlaClient {
   }
 
   private findLatestByTitle(items: Array<Record<string, string>>, title: string): Record<string, string> | null {
+    const decodedTitle = this.decodeHtmlEntities(title);
     for (let i = items.length - 1; i >= 0; i -= 1) {
-      if (items[i].title === title) return items[i];
+      if (this.decodeHtmlEntities(items[i].title) === decodedTitle) return items[i];
     }
     return null;
   }
@@ -2516,7 +2517,7 @@ export class JoomlaClient {
       attempted: true,
       foundInList: !!createdId,
       readbackSucceeded: !!verify?.success,
-      titleMatches: !!verify?.success && article.title === data.title,
+      titleMatches: !!verify?.success && this.decodeHtmlEntities(article.title) === this.decodeHtmlEntities(data.title),
       aliasMatches: !!verify?.success && this.verifyAlias(String(article.alias || ""), data.alias),
       categoryMatches: !!verify?.success && article.categoryId === data.categoryId,
       stateMatches: !!verify?.success && article.state === String(data.state ?? "1"),
@@ -2601,7 +2602,7 @@ export class JoomlaClient {
     const verification = {
       attempted: true,
       readbackSucceeded: verify.success,
-      titleMatches: verify.success && article.title === expectedTitle,
+      titleMatches: verify.success && this.decodeHtmlEntities(article.title) === this.decodeHtmlEntities(expectedTitle),
       aliasMatches: verify.success && article.alias === expectedAlias,
       categoryMatches: verify.success && article.categoryId === expectedCategoryId,
       articleTextMatches: verify.success && this.isEquivalentRichText(String(article.content || ""), expectedArticleText),
@@ -2859,7 +2860,7 @@ export class JoomlaClient {
       attempted: true,
       foundInList: !!createdId,
       readbackSucceeded: !!verify?.success,
-      titleMatches: !!verify?.success && category.title === data.title,
+      titleMatches: !!verify?.success && this.decodeHtmlEntities(category.title) === this.decodeHtmlEntities(data.title),
       aliasMatches: !!verify?.success && this.verifyAlias(String(category.alias || ""), data.alias),
       parentMatches: !!verify?.success && category.parentId === String(data.parentId || "1"),
       descriptionMatches: !!verify?.success && this.isEquivalentRichText(String(category.description || ""), String(data.description || "")),
@@ -2922,7 +2923,7 @@ export class JoomlaClient {
     const verification = {
       attempted: true,
       readbackSucceeded: verify.success,
-      titleMatches: verify.success && category.title === String(formData["jform[title]"] || ""),
+      titleMatches: verify.success && this.decodeHtmlEntities(category.title) === this.decodeHtmlEntities(String(formData["jform[title]"] || "")),
       aliasMatches: verify.success && category.alias === String(formData["jform[alias]"] || ""),
       parentMatches: verify.success && category.parentId === String(formData["jform[parent_id]"] || ""),
       descriptionMatches: verify.success && this.isEquivalentRichText(String(category.description || ""), String(formData["jform[description]"] || "")),
@@ -3670,7 +3671,7 @@ export class JoomlaClient {
     const verification = {
       attempted: true,
       readbackSucceeded: verify.success,
-      titleMatches: !!verify.success && String(module.title || "") === String(formData["jform[title]"] || ""),
+      titleMatches: !!verify.success && this.decodeHtmlEntities(String(module.title || "")) === this.decodeHtmlEntities(String(formData["jform[title]"] || "")),
       positionMatches: !!verify.success && String(module.position || "") === String(formData["jform[position]"] || ""),
       publishedMatches: !!verify.success && String(module.published || "") === String(formData["jform[published]"] || ""),
       accessMatches: !!verify.success && String(module.access || "") === String(formData["jform[access]"] || ""),
@@ -3781,7 +3782,7 @@ export class JoomlaClient {
     const module = ((verify?.data || {}) as Record<string, unknown>);
     const expectedModuleType = String(existingModule.moduleType || "").toLowerCase();
     const actualModuleType = String(module.moduleType || "").toLowerCase();
-    const titleMatches = !!verify?.success && String(module.title || "") === data.title;
+    const titleMatches = !!verify?.success && this.decodeHtmlEntities(String(module.title || "")) === this.decodeHtmlEntities(data.title);
     const moduleTypeMatches = !!verify?.success && (!expectedModuleType || actualModuleType === expectedModuleType);
     const verified = !!savedId && titleMatches && moduleTypeMatches;
 
@@ -4943,6 +4944,7 @@ export class JoomlaClient {
     const typedToken = this.extractCsrfToken(typedHtml) || token;
     const request = { ...type.request, ...(data.request || {}) };
     const formData: Record<string, string> = {
+      ...this.extractFormFields(html),
       ...this.extractFormFields(typedHtml),
       task: "item.save",
       "jform[title]": data.title,
@@ -4958,6 +4960,7 @@ export class JoomlaClient {
       "jform[home]": data.home || "0",
       "jform[note]": data.note || "",
       "jform[template_style_id]": data.templateStyleId || "0",
+      "jform[menuordering]": "-2",
       [typedToken.name]: typedToken.value,
     };
 
@@ -4987,7 +4990,7 @@ export class JoomlaClient {
       attempted: true,
       foundInList: !!savedId,
       readbackSucceeded: !!verify?.success,
-      titleMatches: !!verify?.success && String(item.title || "") === data.title,
+      titleMatches: !!verify?.success && this.decodeHtmlEntities(String(item.title || "")) === this.decodeHtmlEntities(data.title),
       aliasMatches: !!verify?.success && this.verifyAlias(String(item.alias || ""), data.alias),
       menuTypeMatches: !!verify?.success && String(item.menuType || "") === data.menuType,
       parentMatches: !!verify?.success && String(item.parentId || "") === String(data.parentId || "1"),
@@ -5120,7 +5123,7 @@ export class JoomlaClient {
     const verification = {
       attempted: true,
       readbackSucceeded: verify.success,
-      titleMatches: !!verify.success && String(item.title || "") === String(formData["jform[title]"] || ""),
+      titleMatches: !!verify.success && this.decodeHtmlEntities(String(item.title || "")) === this.decodeHtmlEntities(String(formData["jform[title]"] || "")),
       aliasMatches: !!verify.success && String(item.alias || "") === String(formData["jform[alias]"] || ""),
       menuTypeMatches: !!verify.success && String(item.menuType || "") === String(formData["jform[menutype]"] || ""),
       parentMatches: !!verify.success && String(item.parentId || "") === String(formData["jform[parent_id]"] || ""),
@@ -5580,8 +5583,24 @@ export class JoomlaClient {
       }
       await new Promise(r => setTimeout(r, 2000));
 
+      // Scroll through the page to trigger lazy-loaded content before capturing
+      await page.evaluate(() => new Promise<void>((resolve) => {
+        const w = globalThis as any;
+        const distance = 200;
+        const delay = 80;
+        const timer = setInterval(() => {
+          w.scrollBy(0, distance);
+          if (w.scrollY + w.innerHeight >= w.document.body.scrollHeight) {
+            clearInterval(timer);
+            w.scrollTo(0, 0);
+            resolve();
+          }
+        }, delay);
+      }));
+      await new Promise(r => setTimeout(r, 500));
+
       const pageTitle = await page.title();
-      const screenshotBuffer = await page.screenshot({ type: 'png', fullPage: false });
+      const screenshotBuffer = await page.screenshot({ type: 'png', fullPage: true });
       const base64 = Buffer.from(screenshotBuffer).toString('base64');
 
       return {
