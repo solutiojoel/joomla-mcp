@@ -12,6 +12,7 @@ import {
 import fs from "fs";
 import path from "path";
 import { JoomlaClient, JoomlaResponse } from "./joomla-client.js";
+import { FtpClient } from "./ftp-client.js";
 import http from "node:http";
 import { randomUUID } from "node:crypto";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -71,6 +72,7 @@ function getSiteNotesPath(baseUrl: string): string {
 
 function buildServer(joomla: JoomlaClient): Server {
   let isLoggedIn = false;
+  const ftpClient = new FtpClient();
 
   async function ensureLoggedIn(): Promise<JoomlaResponse> {
     if (isLoggedIn) {
@@ -1593,6 +1595,134 @@ const tools = [
       required: [],
     },
   },
+  {
+    name: "ftp_list_files",
+    description:
+      "List files and directories at a path on the site's FTP server. Uses read-only credentials. " +
+      "Start at '/' to explore the server root, then navigate down to find the web root, config files, or assets. " +
+      "The web_root from ftp-sites.json is the suggested starting point for site files.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: {
+          type: "string",
+          description: "Remote path to list (e.g. \"/\" or \"/wichita/cathedral\"). Must be absolute.",
+        },
+        domain: {
+          type: "string",
+          description: "Site domain (e.g. wichitacathedral.com). Defaults to the active Joomla site's domain.",
+        },
+      },
+      required: ["path"],
+    },
+  },
+  {
+    name: "ftp_read_file",
+    description:
+      "Read a text file from the server over FTP and return its content. Limited to 200 KB. " +
+      "Uses read-only credentials. Useful for inspecting PHP files, configuration.php, .htaccess, templates, etc.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: {
+          type: "string",
+          description: "Absolute remote file path (e.g. /wichita/cathedral/configuration.php).",
+        },
+        domain: {
+          type: "string",
+          description: "Site domain. Defaults to the active Joomla site's domain.",
+        },
+      },
+      required: ["path"],
+    },
+  },
+  {
+    name: "ftp_upload_file",
+    description:
+      "Upload text content to a file on the server over FTP. Uses write credentials. " +
+      "If upload_path is configured for the site in ftp-sites.json the target path must be within it; " +
+      "otherwise write access is unrestricted (server-side permissions still apply).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: {
+          type: "string",
+          description: "Absolute remote destination path (e.g. /wichita/cathedral/uploads/script.php).",
+        },
+        content: {
+          type: "string",
+          description: "Text content to write to the file.",
+        },
+        domain: {
+          type: "string",
+          description: "Site domain. Defaults to the active Joomla site's domain.",
+        },
+      },
+      required: ["path", "content"],
+    },
+  },
+  {
+    name: "ftp_delete_file",
+    description:
+      "Delete a file from the server over FTP. Uses write credentials. " +
+      "If upload_path is configured in ftp-sites.json the target path must be within it.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: {
+          type: "string",
+          description: "Absolute remote file path to delete.",
+        },
+        domain: {
+          type: "string",
+          description: "Site domain. Defaults to the active Joomla site's domain.",
+        },
+      },
+      required: ["path"],
+    },
+  },
+  {
+    name: "ftp_upload_local_file",
+    description:
+      "Upload a file from the user's local machine directly to the FTP server without reading its content. " +
+      "Supports any file type including images, PDFs, and other binaries. " +
+      "If upload_path is configured in ftp-sites.json the remote path must be within it.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        local_path: {
+          type: "string",
+          description: "Absolute path to the file on the user's machine (e.g. C:/Users/Jeremy/Desktop/photo.png).",
+        },
+        path: {
+          type: "string",
+          description: "Absolute remote destination path on the FTP server.",
+        },
+        domain: {
+          type: "string",
+          description: "Site domain. Defaults to the active Joomla site's domain.",
+        },
+      },
+      required: ["local_path", "path"],
+    },
+  },
+  {
+    name: "ftp_site_config",
+    description:
+      "Show the FTP configuration for a site from ftp-sites.json: host, web_root, and upload_path. " +
+      "Call this first to verify a site is configured before running other FTP tools. " +
+      "Also lists all domains that have FTP config when a domain is not found.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        domain: {
+          type: "string",
+          description: "Site domain. Defaults to the active Joomla site's domain.",
+        },
+      },
+      required: [],
+    },
+  },
 ];
 
 // Register tool handlers
@@ -2764,6 +2894,49 @@ server.setRequestHandler(CallToolRequestSchema, async (request: { params: { name
           ],
           isError: false,
         };
+      }
+
+      case "ftp_list_files": {
+        const ftpPath = (args?.path as string) || "/";
+        const domain = (args?.domain as string) || FtpClient.domainFromUrl(joomla.getConfig().baseUrl);
+        const result = await ftpClient.listFiles(ftpPath, domain);
+        return { content: [{ type: "text", text: formatResult(result) }], isError: !result.success };
+      }
+
+      case "ftp_read_file": {
+        const ftpPath = args?.path as string;
+        const domain = (args?.domain as string) || FtpClient.domainFromUrl(joomla.getConfig().baseUrl);
+        const result = await ftpClient.readTextFile(ftpPath, domain);
+        return { content: [{ type: "text", text: formatResult(result) }], isError: !result.success };
+      }
+
+      case "ftp_upload_file": {
+        const ftpPath = args?.path as string;
+        const content = (args?.content as string) || "";
+        const domain = (args?.domain as string) || FtpClient.domainFromUrl(joomla.getConfig().baseUrl);
+        const result = await ftpClient.uploadFile(ftpPath, content, domain);
+        return { content: [{ type: "text", text: formatResult(result) }], isError: !result.success };
+      }
+
+      case "ftp_delete_file": {
+        const ftpPath = args?.path as string;
+        const domain = (args?.domain as string) || FtpClient.domainFromUrl(joomla.getConfig().baseUrl);
+        const result = await ftpClient.deleteFile(ftpPath, domain);
+        return { content: [{ type: "text", text: formatResult(result) }], isError: !result.success };
+      }
+
+      case "ftp_upload_local_file": {
+        const localPath = args?.local_path as string;
+        const ftpPath = args?.path as string;
+        const domain = (args?.domain as string) || FtpClient.domainFromUrl(joomla.getConfig().baseUrl);
+        const result = await ftpClient.uploadLocalFile(localPath, ftpPath, domain);
+        return { content: [{ type: "text", text: formatResult(result) }], isError: !result.success };
+      }
+
+      case "ftp_site_config": {
+        const domain = (args?.domain as string) || FtpClient.domainFromUrl(joomla.getConfig().baseUrl);
+        const result = ftpClient.getSiteInfo(domain);
+        return { content: [{ type: "text", text: formatResult(result) }], isError: !result.success };
       }
 
       default:
