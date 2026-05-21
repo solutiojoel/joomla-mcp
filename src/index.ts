@@ -1619,8 +1619,11 @@ const tools = [
   {
     name: "ftp_read_file",
     description:
-      "Read a text file from the server over FTP and return its content. Limited to 200 KB. " +
-      "Uses read-only credentials. Useful for inspecting PHP files, configuration.php, .htaccess, templates, etc.",
+      "Read a text file from the server over FTP. Limited to 200 KB. Uses read-only credentials. " +
+      "By default returns the full file. Use the filtering parameters to avoid bloating context: " +
+      "grep returns only lines matching a pattern (with surrounding context); " +
+      "head returns the first N lines; offset+limit reads a specific line range. " +
+      "All filtered responses include line numbers and a total_lines count so you can navigate further if needed.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1631,6 +1634,29 @@ const tools = [
         domain: {
           type: "string",
           description: "Site domain. Defaults to the active Joomla site's domain.",
+        },
+        grep: {
+          type: "string",
+          description:
+            "Regex pattern to search for. Returns only matching lines plus surrounding context instead of the full file. " +
+            "Case-insensitive. Use this when you need to find a specific rule, variable, or value. " +
+            "Example: 'sc-hero' to find CSS rules for that class.",
+        },
+        context_lines: {
+          type: "number",
+          description: "Number of lines before and after each grep match to include. Defaults to 2.",
+        },
+        head: {
+          type: "number",
+          description: "Return only the first N lines of the file. Useful for checking file structure or headers.",
+        },
+        offset: {
+          type: "number",
+          description: "Zero-based line index to start reading from. Use with limit for pagination.",
+        },
+        limit: {
+          type: "number",
+          description: "Number of lines to return starting from offset.",
         },
       },
       required: ["path"],
@@ -1709,9 +1735,12 @@ const tools = [
   {
     name: "ftp_site_config",
     description:
-      "Show the FTP configuration for a site from ftp-sites.json: host, web_root, and upload_path. " +
+      "Show the FTP configuration for a site from ftp-sites.json: host, web_root, upload_path, pub_path, and pub_url. " +
       "Call this first to verify a site is configured before running other FTP tools. " +
-      "Also lists all domains that have FTP config when a domain is not found.",
+      "Also lists all domains that have FTP config when a domain is not found. " +
+      "upload_path is the write-only path for ftp_upload_file (uses write credentials with a server-side alias). " +
+      "pub_path is the readable equivalent — use this path with ftp_read_file and ftp_list_files to verify or inspect uploaded files. " +
+      "pub_url is the public web base URL for files in the pub folder — use this when linking to uploaded files in HTML, CSS, or modules (e.g. pub_url + '/my-page.css').",
     inputSchema: {
       type: "object",
       properties: {
@@ -2906,7 +2935,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request: { params: { name
       case "ftp_read_file": {
         const ftpPath = args?.path as string;
         const domain = (args?.domain as string) || FtpClient.domainFromUrl(joomla.getConfig().baseUrl);
-        const result = await ftpClient.readTextFile(ftpPath, domain);
+        const result = await ftpClient.readTextFile(ftpPath, domain, {
+          grep: args?.grep as string | undefined,
+          contextLines: args?.context_lines as number | undefined,
+          head: args?.head as number | undefined,
+          offset: args?.offset as number | undefined,
+          limit: args?.limit as number | undefined,
+        });
         return { content: [{ type: "text", text: formatResult(result) }], isError: !result.success };
       }
 

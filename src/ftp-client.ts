@@ -114,7 +114,11 @@ export class FtpClient {
     }
   }
 
-  async readTextFile(remotePath: string, domain: string): Promise<JoomlaResponse> {
+  async readTextFile(
+    remotePath: string,
+    domain: string,
+    options?: { grep?: string; contextLines?: number; head?: number; offset?: number; limit?: number }
+  ): Promise<JoomlaResponse> {
     const conn = await this.connect(domain, "read");
     if ("error" in conn) return { success: false, message: conn.error };
 
@@ -149,12 +153,51 @@ export class FtpClient {
       });
 
       await client.downloadTo(writable, remotePath);
-      const content = Buffer.concat(chunks).toString("utf8");
+      const fullContent = Buffer.concat(chunks).toString("utf8");
+      const lines = fullContent.split("\n");
+      const totalLines = lines.length;
+
+      if (options?.grep) {
+        let pattern: RegExp;
+        try {
+          pattern = new RegExp(options.grep, "i");
+        } catch {
+          return { success: false, message: `Invalid grep pattern: ${options.grep}` };
+        }
+        const ctx = options.contextLines ?? 2;
+        const matchedIndices = new Set<number>();
+        lines.forEach((line, i) => {
+          if (pattern.test(line)) {
+            for (let j = Math.max(0, i - ctx); j <= Math.min(totalLines - 1, i + ctx); j++) {
+              matchedIndices.add(j);
+            }
+          }
+        });
+        const sorted = Array.from(matchedIndices).sort((a, b) => a - b);
+        const content = sorted.map((i) => `${i + 1}: ${lines[i]}`).join("\n");
+        return {
+          success: true,
+          message: `${sorted.length} lines matching /${options.grep}/ in ${remotePath} (${totalLines} total lines)`,
+          data: { content, matched_lines: sorted.length, total_lines: totalLines, path: remotePath },
+        };
+      }
+
+      if (options?.head !== undefined || options?.offset !== undefined || options?.limit !== undefined) {
+        const start = options.offset ?? 0;
+        const end = options.head !== undefined ? options.head : options.limit !== undefined ? start + options.limit : totalLines;
+        const slice = lines.slice(start, end);
+        const content = slice.map((l, i) => `${start + i + 1}: ${l}`).join("\n");
+        return {
+          success: true,
+          message: `Lines ${start + 1}–${start + slice.length} of ${remotePath} (${totalLines} total lines)`,
+          data: { content, lines_returned: slice.length, total_lines: totalLines, path: remotePath },
+        };
+      }
 
       return {
         success: true,
-        message: `Read ${content.length} characters from ${remotePath}`,
-        data: { content, bytes: fileInfo.size, path: remotePath },
+        message: `Read ${fullContent.length} characters from ${remotePath} (${totalLines} lines)`,
+        data: { content: fullContent, bytes: fileInfo.size, total_lines: totalLines, path: remotePath },
       };
     } catch (err) {
       return { success: false, message: `FTP read failed: ${err instanceof Error ? err.message : String(err)}` };
@@ -279,6 +322,8 @@ export class FtpClient {
         host: config.host,
         web_root: config.web_root,
         upload_path: config.upload_path ?? "(not set — write access is unrestricted)",
+        pub_path: config.web_root + "/images/pub",
+        pub_url: `https://${domain}/images/pub`,
       },
     };
   }
