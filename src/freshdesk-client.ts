@@ -23,6 +23,8 @@ export interface FreshdeskTicket {
   tags: string[];
   requester_id: number;
   company_id: number | null;
+  site_code: string | null;
+  site_url: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -189,6 +191,17 @@ export class FreshdeskClient {
   async getTicket(ticketId: number): Promise<FreshdeskResponse> {
     try {
       const { data } = await this.axios.get<TicketRaw>(`/tickets/${ticketId}`);
+      let siteCode: string | null = null;
+      let siteUrl: string | null = null;
+      if (data.company_id) {
+        try {
+          const { data: company } = await this.axios.get<CompanyRaw>(`/companies/${data.company_id}`);
+          siteCode = toSiteCode(company.name);
+          siteUrl = `https://${siteCode}.solutiosoftware.com`;
+        } catch {
+          // company lookup is best-effort; leave nulls
+        }
+      }
       const ticket: FreshdeskTicket = {
         id: data.id,
         subject: data.subject,
@@ -201,6 +214,8 @@ export class FreshdeskClient {
         tags: data.tags ?? [],
         requester_id: data.requester_id,
         company_id: data.company_id ?? null,
+        site_code: siteCode,
+        site_url: siteUrl,
         created_at: data.created_at,
         updated_at: data.updated_at,
       };
