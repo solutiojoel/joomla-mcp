@@ -5,18 +5,18 @@ All agents must follow these rules regardless of the task being performed.
 ## Session Start (Required — in this order)
 
 1. Call `joomla_get_site` and announce the active site to the user:
-   > "Active site: https://example.com (user: solutiobot)"
-2. Call `joomla_read_site_notes` and review any known quirks for this site before starting work.
+   > "Active site: https://example.com (user: shannon)"
 
-Do not perform any edits until the user has acknowledged the active site.
 
-## Switching Sites
+## Switching Sites 
 
 When asked to switch to a different site:
-1. Call `joomla_login` with the new `site_url`
-2. Immediately call `joomla_get_site` to confirm the switch succeeded
-3. Announce the new active site to the user
-4. Never assume a switch succeeded — always verify
+1. If the new active site is obvious or the user already sent you a site go ahead and switch to that site.
+2. Call `joomla_login` with the new `site_url`
+3. Immediately call `joomla_get_site` to confirm the switch succeeded
+4. Announce the new active site to the user
+5. Never assume a switch succeeded — always verify, Do not perform any edits until the user has acknowledged the active site.
+6. Call `joomla_read_site_notes` and review any known quirks for this site before starting work.
 
 ## Credentials
 
