@@ -1854,9 +1854,9 @@ const tools = [
       properties: {
         status: {
           type: "string",
-          enum: ["open", "pending", "resolved", "closed", "unresolved", "all"],
+          enum: ["open", "pending", "waiting", "resolved", "closed", "unresolved", "all"],
           description:
-            "Filter by status: 'open' (status 2), 'pending' (status 3), 'resolved' (status 4), 'closed' (status 5), 'unresolved' (open + pending, default), 'all'",
+            "Filter by status: 'open' (status 2), 'pending' (status 3), 'waiting' (Waiting on Customer/Third Party, statuses 6+7), 'resolved' (status 4), 'closed' (status 5), 'unresolved' (open + pending + waiting, default), 'all'",
         },
         company_id: {
           type: "number",
@@ -3168,7 +3168,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: { params: { name
       case "freshdesk_list_tickets": {
         if (!freshdesk) return { content: [{ type: "text", text: JSON.stringify({ success: false, message: "Freshdesk not configured: set FRESHDESK_DOMAIN and FRESHDESK_API_KEY in .env" }) }], isError: true };
         const result = await freshdesk.listTickets({
-          status: args?.status as "open" | "pending" | "resolved" | "closed" | "unresolved" | "all" | undefined,
+          status: args?.status as "open" | "pending" | "waiting" | "resolved" | "closed" | "unresolved" | "all" | undefined,
           company_id: args?.company_id as number | undefined,
           page: args?.page as number | undefined,
         });

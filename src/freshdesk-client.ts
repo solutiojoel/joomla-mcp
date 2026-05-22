@@ -320,20 +320,22 @@ export class FreshdeskClient {
   }
 
   async listTickets(options: {
-    status?: "open" | "pending" | "resolved" | "closed" | "unresolved" | "all";
+    status?: "open" | "pending" | "waiting" | "resolved" | "closed" | "unresolved" | "all";
     company_id?: number;
     page?: number;
   }): Promise<FreshdeskResponse> {
     try {
       const { status = "unresolved", company_id, page = 1 } = options;
 
+      // Custom statuses: 6=Waiting on Customer, 7=Waiting on Third Party
       const STATUS_FILTER_MAP: Record<string, number[]> = {
         open: [2],
         pending: [3],
+        waiting: [6, 7],
         resolved: [4],
         closed: [5],
-        unresolved: [2, 3],
-        all: [2, 3, 4, 5],
+        unresolved: [2, 3, 6, 7],
+        all: [2, 3, 4, 5, 6, 7],
       };
 
       const statuses = STATUS_FILTER_MAP[status] ?? [2, 3];
