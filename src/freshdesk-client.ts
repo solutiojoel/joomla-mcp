@@ -319,6 +319,62 @@ export class FreshdeskClient {
     }
   }
 
+  async listTickets(options: {
+    status?: "open" | "pending" | "resolved" | "closed" | "unresolved" | "all";
+    company_id?: number;
+    page?: number;
+  }): Promise<FreshdeskResponse> {
+    try {
+      const { status = "unresolved", company_id, page = 1 } = options;
+
+      const STATUS_FILTER_MAP: Record<string, number[]> = {
+        open: [2],
+        pending: [3],
+        resolved: [4],
+        closed: [5],
+        unresolved: [2, 3],
+        all: [2, 3, 4, 5],
+      };
+
+      const statuses = STATUS_FILTER_MAP[status] ?? [2, 3];
+      const statusPart =
+        statuses.length === 1
+          ? `status:${statuses[0]}`
+          : `(${statuses.map((s) => `status:${s}`).join(" OR ")})`;
+
+      const parts = [statusPart];
+      if (company_id) parts.push(`company_id:${company_id}`);
+      const query = parts.length === 1 ? parts[0] : `(${parts.join(" AND ")})`;
+
+      const { data } = await this.axios.get<{ total: number; results: TicketRaw[] }>(
+        "/search/tickets",
+        { params: { query: `"${query}"`, page } }
+      );
+
+      const tickets = (data.results ?? []).map((t) => ({
+        id: t.id,
+        subject: t.subject,
+        status: t.status,
+        status_label: STATUS_MAP[t.status] ?? String(t.status),
+        priority: t.priority,
+        priority_label: PRIORITY_MAP[t.priority] ?? String(t.priority),
+        tags: t.tags ?? [],
+        requester_id: t.requester_id,
+        company_id: t.company_id ?? null,
+        created_at: t.created_at,
+        updated_at: t.updated_at,
+      }));
+
+      return {
+        success: true,
+        message: `${data.total} ticket(s) found (page ${page})`,
+        data: { total: data.total, page, tickets },
+      };
+    } catch (e) {
+      return this.wrapError(e);
+    }
+  }
+
   async updateTicket(
     ticketId: number,
     fields: FreshdeskUpdateFields

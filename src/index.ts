@@ -1846,6 +1846,31 @@ const tools = [
     },
   },
   {
+    name: "freshdesk_list_tickets",
+    description:
+      "List Freshdesk tickets filtered by status. Defaults to 'unresolved' (Open + Pending). Optionally filter by company_id. Returns id, subject, status, priority, tags, requester_id, company_id, and timestamps for each ticket. Results are paginated — 30 per page.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        status: {
+          type: "string",
+          enum: ["open", "pending", "resolved", "closed", "unresolved", "all"],
+          description:
+            "Filter by status: 'open' (status 2), 'pending' (status 3), 'resolved' (status 4), 'closed' (status 5), 'unresolved' (open + pending, default), 'all'",
+        },
+        company_id: {
+          type: "number",
+          description: "Filter tickets by Freshdesk company ID",
+        },
+        page: {
+          type: "number",
+          description: "Page number (default: 1, 30 results per page)",
+        },
+      },
+      required: [],
+    },
+  },
+  {
     name: "freshdesk_update_ticket",
     description:
       "Update a ticket's status, priority, or tags. Only provided fields are changed. Status: 2=Open, 3=Pending, 4=Resolved, 5=Closed. Priority: 1=Low, 2=Medium, 3=High, 4=Urgent. Confirm with the user before changing status.",
@@ -3137,6 +3162,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request: { params: { name
         if (!ticketId || !body) return { content: [{ type: "text", text: "Error: ticket_id and body are required" }], isError: true };
         const taggedBody = `<p>— Shannon (AI Assistant)</p>${body}`;
         const result = await freshdesk.addNote(ticketId, taggedBody, true);
+        return { content: [{ type: "text", text: formatResult(result) }], isError: !result.success };
+      }
+
+      case "freshdesk_list_tickets": {
+        if (!freshdesk) return { content: [{ type: "text", text: JSON.stringify({ success: false, message: "Freshdesk not configured: set FRESHDESK_DOMAIN and FRESHDESK_API_KEY in .env" }) }], isError: true };
+        const result = await freshdesk.listTickets({
+          status: args?.status as "open" | "pending" | "resolved" | "closed" | "unresolved" | "all" | undefined,
+          company_id: args?.company_id as number | undefined,
+          page: args?.page as number | undefined,
+        });
         return { content: [{ type: "text", text: formatResult(result) }], isError: !result.success };
       }
 
