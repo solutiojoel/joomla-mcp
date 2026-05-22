@@ -13,9 +13,20 @@ import fs from "fs";
 import path from "path";
 import { JoomlaClient, JoomlaResponse } from "./joomla-client.js";
 import { FtpClient } from "./ftp-client.js";
+import { FreshdeskClient } from "./freshdesk-client.js";
 import http from "node:http";
 import { randomUUID } from "node:crypto";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+
+// Freshdesk client (optional — tools fail gracefully if not configured)
+const freshdeskConfig = {
+  domain: process.env.FRESHDESK_DOMAIN ?? "",
+  apiKey: process.env.FRESHDESK_API_KEY ?? "",
+};
+const freshdesk =
+  freshdeskConfig.domain && freshdeskConfig.apiKey
+    ? new FreshdeskClient(freshdeskConfig)
+    : null;
 
 // Load config from environment
 const config = {
@@ -1752,6 +1763,118 @@ const tools = [
       required: [],
     },
   },
+
+  // --- Freshdesk tools ---
+  {
+    name: "freshdesk_get_ticket",
+    description:
+      "Fetch a Freshdesk ticket by ID. Returns subject, description (plain text), status, priority, tags, requester_id, company_id, and timestamps. Call this as the first step when a user provides a ticket ID.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ticket_id: {
+          type: "number",
+          description: "Freshdesk ticket ID",
+        },
+      },
+      required: ["ticket_id"],
+    },
+  },
+  {
+    name: "freshdesk_get_contact",
+    description:
+      "Fetch a Freshdesk contact (requester) by contact ID. Returns name, email, phone, company_id, and any custom fields. Use the requester_id returned by freshdesk_get_ticket.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        contact_id: {
+          type: "number",
+          description: "Freshdesk contact ID (use requester_id from ticket)",
+        },
+      },
+      required: ["contact_id"],
+    },
+  },
+  {
+    name: "freshdesk_get_company",
+    description:
+      "Fetch a Freshdesk company by company ID. Returns company name, domains, custom fields, and the derived site_code and site_url (https://{site_code}.solutiosoftware.com). Use company_id from the ticket or contact. The site_url can be passed directly to joomla_login.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        company_id: {
+          type: "number",
+          description: "Freshdesk company ID (use company_id from ticket or contact)",
+        },
+      },
+      required: ["company_id"],
+    },
+  },
+  {
+    name: "freshdesk_get_conversations",
+    description:
+      "Fetch all replies and notes for a ticket in chronological order. Each item includes type (reply/note), body_text (plain text), author, timestamp, and private flag. Call this to get the full thread before investigating an issue.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ticket_id: {
+          type: "number",
+          description: "Freshdesk ticket ID",
+        },
+      },
+      required: ["ticket_id"],
+    },
+  },
+  {
+    name: "freshdesk_add_note",
+    description:
+      "Add a private internal note to a Freshdesk ticket. Notes are always private and never visible to the customer. The server automatically prepends '— Shannon (AI Assistant)' to every note — do not add this yourself. Use this to document what was investigated and resolved after completing Joomla work.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ticket_id: {
+          type: "number",
+          description: "Freshdesk ticket ID",
+        },
+        body: {
+          type: "string",
+          description:
+            "Note body text (HTML supported). Be specific: describe what was checked, what was changed, and where.",
+        },
+      },
+      required: ["ticket_id", "body"],
+    },
+  },
+  {
+    name: "freshdesk_update_ticket",
+    description:
+      "Update a ticket's status, priority, or tags. Only provided fields are changed. Status: 2=Open, 3=Pending, 4=Resolved, 5=Closed. Priority: 1=Low, 2=Medium, 3=High, 4=Urgent. Confirm with the user before changing status.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ticket_id: {
+          type: "number",
+          description: "Freshdesk ticket ID",
+        },
+        status: {
+          type: "number",
+          enum: [2, 3, 4, 5],
+          description: "New status: 2=Open, 3=Pending, 4=Resolved, 5=Closed",
+        },
+        priority: {
+          type: "number",
+          enum: [1, 2, 3, 4],
+          description: "New priority: 1=Low, 2=Medium, 3=High, 4=Urgent",
+        },
+        tags: {
+          type: "array",
+          items: { type: "string" },
+          description: "Replace the full tag list with this array",
+        },
+      },
+      required: ["ticket_id"],
+    },
+  },
 ];
 
 // Register tool handlers
@@ -2971,6 +3094,61 @@ server.setRequestHandler(CallToolRequestSchema, async (request: { params: { name
       case "ftp_site_config": {
         const domain = (args?.domain as string) || FtpClient.domainFromUrl(joomla.getConfig().baseUrl);
         const result = ftpClient.getSiteInfo(domain);
+        return { content: [{ type: "text", text: formatResult(result) }], isError: !result.success };
+      }
+
+      // --- Freshdesk cases ---
+      case "freshdesk_get_ticket": {
+        if (!freshdesk) return { content: [{ type: "text", text: JSON.stringify({ success: false, message: "Freshdesk not configured: set FRESHDESK_DOMAIN and FRESHDESK_API_KEY in .env" }) }], isError: true };
+        const ticketId = args?.ticket_id as number | undefined;
+        if (!ticketId) return { content: [{ type: "text", text: "Error: ticket_id is required" }], isError: true };
+        const result = await freshdesk.getTicket(ticketId);
+        return { content: [{ type: "text", text: formatResult(result) }], isError: !result.success };
+      }
+
+      case "freshdesk_get_contact": {
+        if (!freshdesk) return { content: [{ type: "text", text: JSON.stringify({ success: false, message: "Freshdesk not configured: set FRESHDESK_DOMAIN and FRESHDESK_API_KEY in .env" }) }], isError: true };
+        const contactId = args?.contact_id as number | undefined;
+        if (!contactId) return { content: [{ type: "text", text: "Error: contact_id is required" }], isError: true };
+        const result = await freshdesk.getContact(contactId);
+        return { content: [{ type: "text", text: formatResult(result) }], isError: !result.success };
+      }
+
+      case "freshdesk_get_company": {
+        if (!freshdesk) return { content: [{ type: "text", text: JSON.stringify({ success: false, message: "Freshdesk not configured: set FRESHDESK_DOMAIN and FRESHDESK_API_KEY in .env" }) }], isError: true };
+        const companyId = args?.company_id as number | undefined;
+        if (!companyId) return { content: [{ type: "text", text: "Error: company_id is required" }], isError: true };
+        const result = await freshdesk.getCompany(companyId);
+        return { content: [{ type: "text", text: formatResult(result) }], isError: !result.success };
+      }
+
+      case "freshdesk_get_conversations": {
+        if (!freshdesk) return { content: [{ type: "text", text: JSON.stringify({ success: false, message: "Freshdesk not configured: set FRESHDESK_DOMAIN and FRESHDESK_API_KEY in .env" }) }], isError: true };
+        const ticketId = args?.ticket_id as number | undefined;
+        if (!ticketId) return { content: [{ type: "text", text: "Error: ticket_id is required" }], isError: true };
+        const result = await freshdesk.getConversations(ticketId);
+        return { content: [{ type: "text", text: formatResult(result) }], isError: !result.success };
+      }
+
+      case "freshdesk_add_note": {
+        if (!freshdesk) return { content: [{ type: "text", text: JSON.stringify({ success: false, message: "Freshdesk not configured: set FRESHDESK_DOMAIN and FRESHDESK_API_KEY in .env" }) }], isError: true };
+        const ticketId = args?.ticket_id as number | undefined;
+        const body = args?.body as string | undefined;
+        if (!ticketId || !body) return { content: [{ type: "text", text: "Error: ticket_id and body are required" }], isError: true };
+        const taggedBody = `<p>— Shannon (AI Assistant)</p>${body}`;
+        const result = await freshdesk.addNote(ticketId, taggedBody, true);
+        return { content: [{ type: "text", text: formatResult(result) }], isError: !result.success };
+      }
+
+      case "freshdesk_update_ticket": {
+        if (!freshdesk) return { content: [{ type: "text", text: JSON.stringify({ success: false, message: "Freshdesk not configured: set FRESHDESK_DOMAIN and FRESHDESK_API_KEY in .env" }) }], isError: true };
+        const ticketId = args?.ticket_id as number | undefined;
+        if (!ticketId) return { content: [{ type: "text", text: "Error: ticket_id is required" }], isError: true };
+        const result = await freshdesk.updateTicket(ticketId, {
+          status: args?.status as number | undefined,
+          priority: args?.priority as number | undefined,
+          tags: args?.tags as string[] | undefined,
+        });
         return { content: [{ type: "text", text: formatResult(result) }], isError: !result.success };
       }
 
