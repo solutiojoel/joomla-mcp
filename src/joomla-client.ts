@@ -2558,8 +2558,19 @@ export class JoomlaClient {
     }
   ): Promise<JoomlaResponse> {
     const editUrl = this.getAdminUrl(`index.php?option=com_content&task=article.edit&id=${id}`);
-    const { html } = await this.getPage(editUrl);
-    const existingArticle = this.parseArticleForm(html);
+    let { html } = await this.getPage(editUrl);
+    let existingArticle = this.parseArticleForm(html);
+
+    if (!existingArticle.title) {
+      await this.checkInArticle(id);
+      const retry = await this.getPage(editUrl);
+      html = retry.html;
+      existingArticle = this.parseArticleForm(html);
+      if (!existingArticle.title) {
+        return { success: false, message: `Article ${id} form could not be loaded after auto check-in — article may not exist or may require elevated permissions` };
+      }
+    }
+
     const token = this.extractCsrfToken(html);
 
     if (!token) {
@@ -2613,7 +2624,7 @@ export class JoomlaClient {
 
     return {
       success: verified,
-      message: verified ? "Article saved" : (errorMsg ?? successMsg ? "Article save submitted, but updated values were not verified" : "Unknown result"),
+      message: verified ? "Article saved" : (errorMsg ?? (successMsg ? "Article save submitted, but updated values were not verified" : "Unknown result")),
       data: this.buildOperationData("article", id, {
         title: article.title || expectedTitle,
         state: article.state || expectedState,
@@ -2679,22 +2690,20 @@ export class JoomlaClient {
     }
 
   async checkInArticle(id: string, options: { expectedTitle?: string } = {}): Promise<JoomlaResponse> {
-    const before = await this.fetchArticleForm(id);
-    const articleBefore = (before.data || {}) as Record<string, string>;
-    const title = articleBefore.title || "";
-    if (!before.success) {
-      return { success: false, message: `Refusing to check in article ${id} because the current target could not be verified` };
-    }
-    if (options.expectedTitle && title !== options.expectedTitle) {
-      return { success: false, message: `Refusing to check in article ${id}: expected title ${options.expectedTitle}, found ${title}` };
-    }
-
     const listUrl = this.getAdminUrl("index.php?option=com_content&view=articles");
-    const { html } = await this.getPage(listUrl);
-    const token = this.extractCsrfToken(html);
+    const { html: listHtml } = await this.getPage(listUrl);
+    const token = this.extractCsrfToken(listHtml);
 
     if (!token) {
       return { success: false, message: "Failed to extract CSRF token" };
+    }
+
+    if (options.expectedTitle) {
+      const articles = this.parseArticleList(listHtml);
+      const match = articles.find((a) => a.id === id);
+      if (match && match.title !== options.expectedTitle) {
+        return { success: false, message: `Refusing to check in article ${id}: expected title '${options.expectedTitle}', found '${match.title}'` };
+      }
     }
 
     const result = await this.postPage(listUrl, {
@@ -2714,11 +2723,10 @@ export class JoomlaClient {
       success: checkedOutCleared,
       message: checkedOutCleared ? "Article checked in" : (errorMsg ?? "Article check-in submitted, but checkout state was not verified as cleared"),
       data: this.buildOperationData("article", id, {
-        title,
+        title: listedArticle?.title ?? "",
         state: String(listedArticle?.state || ""),
         verification: {
           attempted: true,
-          preflightVerified: true,
           listedAfterCheckIn: !!listedArticle,
           checkedOutCleared,
         },
