@@ -56,6 +56,8 @@ Review any known quirks for this site before starting investigation.
 
 ## Step 4 — Research the Issue
 
+**Before investigating:** Call `resources/list` and check whether any KB doc under `kb/` matches the issue type (e.g. `kb/docman.md` for DOCman issues, `kb/akeeba.md` for backup issues). If a match exists, fetch it — it contains known solutions and pitfalls for that area.
+
 Read the full ticket description and conversation thread, then investigate using Joomla tools. Common starting points by issue type:
 
 - **Article / content missing or wrong**: `joomla_list_articles(search: "...")`, `joomla_get_article(id: ...)`

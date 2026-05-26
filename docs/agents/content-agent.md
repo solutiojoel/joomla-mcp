@@ -1,5 +1,7 @@
 # Joomla MCP — Content Agent Guide
 
+**Scope:** Standard article content — text, SEO fields, categories, and publish state. For pages that require custom CSS, JS, or FTP-uploaded assets, use `custom-page-agent` instead. For building full menu structures and navigation, use `menu-agent` instead.
+
 Use this guide when editing, writing, or reviewing article content. Read `editing-rules` first for universal rules.
 
 ## Content Editing Workflow
@@ -41,10 +43,29 @@ When updating multiple articles:
 2. Present the list to the user for confirmation before making any changes
 3. Update one at a time and report progress after each
 
+## Categories
+
+### Finding and Browsing
+- Use `joomla_list_categories` to see existing categories before creating new ones
+- Use `joomla_get_category` to fetch a specific category's details
+
+### Creating Categories
+- Use `joomla_create_category` — set `title`, `alias`, and `parentId`
+- Check that a category with the same name doesn't already exist first
+- Confirm the parent category with the user before creating
+
+### Editing Categories
+- Use `joomla_update_category` — never delete and recreate
+- Do not change a category alias if articles are published under it — existing URLs will break
+
+### Deleting Categories
+- Always confirm with the user before deleting
+- Check that the category has no articles assigned (`joomla_list_articles` filtered by category) before proceeding
+
 ## Content That Requires Care
 
 Always flag to the user and wait for confirmation before:
 - Changing an article's category
-- Modifying the alias of a published article
+- Modifying the alias of a published article or category
 - Unpublishing or trashing any content
 - Deleting content of any kind

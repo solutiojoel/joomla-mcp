@@ -1,6 +1,6 @@
-# Joomla MCP — Fancy Page Builder Guide
+# Joomla MCP — Custom Page Agent Guide
 
-Use this guide when asked to build or redesign a Joomla article page with custom styling. Read `editing-rules` first.
+**Scope:** Building or redesigning Joomla article pages that require custom CSS, JS, or FTP-uploaded assets. This is distinct from `content-agent` (which handles standard text/SEO edits) — use this guide any time a page needs a Raw Tags module, FTP file uploads, or a style guide. Read `editing-rules` first.
 
 ## Overview
 

@@ -3212,10 +3212,22 @@ server.setRequestHandler(CallToolRequestSchema, async (request: { params: { name
     return { resourceTemplates: [] };
   });
 
+  function collectMdFiles(dir: string, base: string = ""): string[] {
+    if (!fs.existsSync(dir)) return [];
+    const results: string[] = [];
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const rel = base ? `${base}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) {
+        results.push(...collectMdFiles(path.join(dir, entry.name), rel));
+      } else if (entry.isFile() && entry.name.endsWith(".md")) {
+        results.push(rel);
+      }
+    }
+    return results;
+  }
+
   server.setRequestHandler(ListResourcesRequestSchema, async () => {
-    const files = fs.existsSync(DOCS_DIR)
-      ? fs.readdirSync(DOCS_DIR).filter((f) => f.endsWith(".md"))
-      : [];
+    const files = collectMdFiles(DOCS_DIR);
     return {
       resources: files.map((f) => ({
         uri: `joomla-docs://agents/${f}`,
