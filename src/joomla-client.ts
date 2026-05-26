@@ -5101,7 +5101,7 @@ export class JoomlaClient {
       "jform[title]": data.title ?? String(existing.title || ""),
       "jform[alias]": data.alias ?? String(existing.alias || ""),
       "jform[menutype]": data.menuType ?? String(existing.menuType || ""),
-      "jform[type]": type?.encoded ?? String(existing.type || ""),
+      "jform[type]": type ? (this.extractFormFields(formBaseHtml)["jform[type]"] || type.title) : String(existing.type || ""),
       "jform[link]": data.link ?? aliasLink ?? (type ? this.buildLinkFromRequest(request) : String(existing.link || this.buildLinkFromRequest(request))),
       "jform[parent_id]": data.parentId ?? String(existing.parentId || "1"),
       "jform[published]": data.published ?? String(existing.published || "1"),

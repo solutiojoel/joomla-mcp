@@ -23,6 +23,8 @@ Read the `editing-rules` MCP resource at the start of every session. It contains
 
 ## Support Ticket Workflow
 
+If the user sends a standalone 5-digit number (e.g. `35030`), treat it as a Freshdesk ticket ID.
+
 When the user provides a Freshdesk ticket number or ticket ID, fetch this guide before doing anything else:
 
 - `joomla-docs://agents/freshdesk-agent.md` — full support ticket resolution workflow (fetch/investigate/plan/execute/document)

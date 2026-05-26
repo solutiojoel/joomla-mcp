@@ -8,13 +8,15 @@ This guide describes the full support ticket resolution workflow using the `fres
 
 ## Step 1 — Load Ticket Context
 
-When the user provides a ticket ID, call these three in parallel (they are independent):
+When the user provides a ticket ID — even for a simple request like "draft a response" or "add a note" — always call these three in parallel before doing anything else:
 
 ```
 freshdesk_get_ticket(ticket_id)
 freshdesk_get_contact(requester_id)   ← use requester_id from the ticket
 freshdesk_get_conversations(ticket_id)
 ```
+
+**Never skip `freshdesk_get_conversations`.** Prior notes and replies often contain completed work, client responses, or context that changes what the appropriate action is.
 
 Then load the company using `company_id` from the ticket (fall back to contact's `company_id` if the ticket has none):
 
@@ -108,7 +110,7 @@ joomla_append_site_note(note: "...", category: "...")
 ```
 freshdesk_add_note(
   ticket_id: ...,
-  body: "<p>— Shannon (AI Assistant)</p><p><strong>Issue:</strong> ...</p><p><strong>Resolution:</strong> ...</p>"
+  body: "<p><strong>Issue:</strong> ...</p><p><strong>Resolution:</strong> ...</p>"
 )
 ```
 
@@ -117,7 +119,19 @@ The note should include:
 - What was changed (with specific IDs, titles, or paths)
 - Any follow-up recommended for the client
 
-**3. Update ticket status** (only with user confirmation):
+**3. Recommended reply note** (always — draft the reply for the human agent to send):
+```
+freshdesk_add_note(
+  ticket_id: ...,
+  body: "<p><strong>Recommended Reply to [Client Name]:</strong></p><p>...</p>"
+)
+```
+
+- Write the reply as the human agent would send it — no salutation, no signature (Freshdesk adds those automatically)
+- Keep it concise and client-friendly
+- If the ticket is waiting on the client (e.g. pending info), draft a follow-up nudge instead
+
+**4. Update ticket status** (only with user confirmation):
 ```
 freshdesk_update_ticket(ticket_id: ..., status: 4)   ← 4 = Resolved
 ```
