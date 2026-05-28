@@ -1744,6 +1744,26 @@ const tools = [
     },
   },
   {
+    name: "ftp_mkdir",
+    description:
+      "Create a directory (and any missing intermediate directories) on the site's FTP server. " +
+      "Uses write credentials. If upload_path is configured in ftp-sites.json the target path must be within it.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: {
+          type: "string",
+          description: "Remote directory path to create (e.g. /rc/stpat-hunt/pub/my-folder).",
+        },
+        domain: {
+          type: "string",
+          description: "Site domain. Defaults to the active Joomla site's domain.",
+        },
+      },
+      required: ["path"],
+    },
+  },
+  {
     name: "ftp_site_config",
     description:
       "Show the FTP configuration for a site from ftp-sites.json: host, web_root, upload_path, pub_path, and pub_url. " +
@@ -3113,6 +3133,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request: { params: { name
         const ftpPath = args?.path as string;
         const domain = (args?.domain as string) || FtpClient.domainFromUrl(joomla.getConfig().baseUrl);
         const result = await ftpClient.uploadLocalFile(localPath, ftpPath, domain);
+        return { content: [{ type: "text", text: formatResult(result) }], isError: !result.success };
+      }
+
+      case "ftp_mkdir": {
+        const ftpPath = args?.path as string;
+        const domain = (args?.domain as string) || FtpClient.domainFromUrl(joomla.getConfig().baseUrl);
+        const result = await ftpClient.makeDirectory(ftpPath, domain);
         return { content: [{ type: "text", text: formatResult(result) }], isError: !result.success };
       }
 

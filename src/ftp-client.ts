@@ -242,6 +242,30 @@ export class FtpClient {
     }
   }
 
+  async makeDirectory(remotePath: string, domain: string): Promise<JoomlaResponse> {
+    const conn = await this.connect(domain, "write");
+    if ("error" in conn) return { success: false, message: conn.error };
+
+    const { client, config } = conn;
+
+    if (config.upload_path && !remotePath.startsWith(config.upload_path)) {
+      client.close();
+      return {
+        success: false,
+        message: `mkdir refused: "${remotePath}" is outside the allowed upload directory "${config.upload_path}".`,
+      };
+    }
+
+    try {
+      await client.ensureDir(remotePath);
+      return { success: true, message: `Directory created: ${remotePath} on ${domain}` };
+    } catch (err) {
+      return { success: false, message: `FTP mkdir failed: ${err instanceof Error ? err.message : String(err)}` };
+    } finally {
+      client.close();
+    }
+  }
+
   async deleteFile(remotePath: string, domain: string): Promise<JoomlaResponse> {
     const conn = await this.connect(domain, "write");
     if ("error" in conn) return { success: false, message: conn.error };
