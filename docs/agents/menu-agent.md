@@ -80,7 +80,19 @@ Categories organize articles so Gantry 5 Joomla Articles particles can filter by
 - Call `joomla_get_menu_item` on any one item to see the `templateStyleOptions` list and find the correct style ID
 - Call `joomla_update_menu_item` on all items in one parallel batch, setting `templateStyleId` to the target outline
 
-### 8. Create the staff grid module (if page has a staff/team section)
+### 8. Add Gantry 5 subtitles to top-level menu items (bilingual sites)
+
+Gantry 5 supports a subtitle line rendered below each menu label in the Menu particle. Set it via the `gantry-subtitle` param on `joomla_update_menu_item`:
+
+```
+joomla_update_menu_item(id, params: { "gantry-subtitle": "Spanish translation" })
+```
+
+- Only set on **top-level** (root-level) menu items — sub-items do not typically show subtitles
+- If the item title was previously bilingual (e.g. `"Sacraments | Sacramentos"`), clean the title to English-only and move the Spanish text into `gantry-subtitle` — both changes can be made in a single call
+- Whether the subtitle renders depends on the active Gantry 5 outline's Menu particle settings — verify on the frontend after saving
+
+### 9. Create the staff grid module (if page has a staff/team section)
 
 Fetch `joomla-docs://agents/kb/staff-grid.md` for the full module config, article body format, ordering steps, and photo upload notes.
 

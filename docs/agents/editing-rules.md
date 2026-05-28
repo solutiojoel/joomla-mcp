@@ -55,6 +55,16 @@ When you discover something non-obvious about the current site, save it immediat
 When existing notes become stale or incorrect:
 - Call `joomla_read_site_notes`, revise the content in context, then call `joomla_write_site_notes` with the full updated text
 
+## FTP Access Limitations
+
+FTP credentials only provide access to user-content directories (`images/` and site-specific content folders). **Gantry 5 template files are not accessible via FTP.** This includes:
+
+- Outline YAML files (`config/default/*.yaml`)
+- Menu configuration YAML files (`config/default/menu/*.yaml`)
+- Template PHP/TWIG files
+
+Do not attempt to read or edit Gantry 5 configuration via FTP — those paths will return empty or not exist. Use the Joomla admin interface or MCP tools instead (e.g. `gantry-subtitle` is a menu item param, not a template file edit).
+
 ## Available Workflow Guides
 
 Additional agent-specific guides are available as MCP resources. Only fetch them when performing that specific workflow:
