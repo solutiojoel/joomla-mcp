@@ -605,22 +605,29 @@ export class JoomlaClient {
     return { status: response.status, headers: responseHeaders, body };
   }
 
-  private async getPage(url: string): Promise<{ html: string; token: { name: string; value: string } | null }> {
+  private async getPage(url: string, options?: { skipAuthCheck?: boolean }): Promise<{ html: string; token: { name: string; value: string } | null }> {
     const result = await this.request(url);
 
     // Follow redirects
     if ([301, 302, 303, 307, 308].includes(result.status)) {
       const location = result.headers.get("location") || url;
       const redirectUrl = this.resolveUrl(location);
-      return this.getPage(redirectUrl);
+      return this.getPage(redirectUrl, options);
     }
 
-    const token = this.extractCsrfToken(result.body);
+    const html = result.body;
+
+    // Detect session expiry: an admin component URL returned the login form
+    if (!options?.skipAuthCheck && url.includes("/administrator/") && url.includes("option=") && html.includes("mod-login-username")) {
+      throw new Error("SESSION_EXPIRED: Joomla session has expired. Call joomla_login to re-authenticate, then retry.");
+    }
+
+    const token = this.extractCsrfToken(html);
     if (token) {
       this.tokenName = token.name;
     }
 
-    return { html: result.body, token };
+    return { html, token };
   }
 
   private async postPage(
@@ -2276,7 +2283,7 @@ export class JoomlaClient {
     this.gantryOutlineLayoutUrls.clear();
     this.gantryLayoutRootCache.clear();
     const loginUrl = this.getAdminUrl();
-    const result = await this.getPage(loginUrl);
+    const result = await this.getPage(loginUrl, { skipAuthCheck: true });
     const token = this.extractCsrfToken(result.html);
 
     if (!token) {
