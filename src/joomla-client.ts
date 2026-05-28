@@ -5267,26 +5267,33 @@ export class JoomlaClient {
       boxchecked: "1",
       [token.name]: token.value,
     });
-    const successMsg = /item[s]?\s+(published|unpublished)|has been (published|unpublished)/i.test(result.html);
     const errorMsg = this.extractAlertMessage(result.html);
-    const verify = await this.getMenuItem(id);
-    const item = (verify.data || {}) as Record<string, unknown>;
-    const actualState = String(item.published || "");
-    const verified = verify.success && actualState === state;
+
+    // Verify using the list view rather than the edit form. The edit form's jform[published]
+    // field has a fallback default of "1", which causes false-positive verification when the
+    // field isn't captured (Joomla 4 renders it as a custom radio group, not a plain input).
+    const verifyPage = await this.getPage(listUrl);
+    const verifyItems = this.parseMenuItemList(verifyPage.html);
+    const listedItem = verifyItems.find((entry) => entry.id === id);
+    const expectedLabel = state === "1" ? "Published" : "Unpublished";
+    const foundInList = !!listedItem;
+    const actualLabel = listedItem?.state ?? "Unknown";
+    const verified = foundInList && actualLabel === expectedLabel;
 
     return {
       success: verified,
       message: verified
         ? `Menu item ${state === "1" ? "published" : "unpublished"}`
-        : (errorMsg ?? successMsg ? `Menu item state was not verified after ${task}` : "Unknown result"),
+        : (errorMsg ?? `Menu item state was not verified after ${task}`),
       data: this.buildOperationData("menuItem", id, {
-        title: String(item.title || title),
-        state: actualState,
+        title: listedItem?.title ?? title,
+        state: actualLabel === "Published" ? "1" : actualLabel === "Unpublished" ? "0" : "",
         verification: {
           attempted: true,
           preflightVerified: true,
           requestedState: state,
-          actualState,
+          actualState: actualLabel,
+          foundInList,
           verified,
         },
         menuType: actualMenuType,
