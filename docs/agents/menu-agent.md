@@ -102,8 +102,8 @@ Fetch `joomla-docs://agents/kb/staff-grid.md` for the full module config, articl
 
 | Issue | Resolution |
 |---|---|
-| Article creation returns unverified but no error | Search by title with `joomla_list_articles` to confirm; article usually created but landed in wrong category — update category ID |
-| Staff articles land in wrong category | Create them, confirm IDs via search, then `joomla_update_article` to correct the category |
+| Article creation returns unverified but no error | Search by title with `joomla_article(action: "list", search: "...")` to confirm; article usually created but landed in wrong category — update category ID |
+| Staff articles land in wrong category | Create them, confirm IDs via search, then `joomla_article(action: "update", ...)` to correct the category |
 | Top-level articles appearing in particle grid | Move them to the Page Content category so the section "Items" category only contains sub-articles |
 
 ---

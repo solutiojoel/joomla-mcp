@@ -121,7 +121,7 @@ joomla_create_module(
 ## Step 4 — Write the Article HTML and Verify
 
 1. Write HTML using `sc-*` classes (see component snippets below)
-2. `joomla_update_article(id, content)`
+2. `joomla_article(action: "update", id, content)`
 3. `joomla_get_frontend_screenshot(path, viewport="desktop")`
 
 **Article HTML rules (TinyMCE-safe):**

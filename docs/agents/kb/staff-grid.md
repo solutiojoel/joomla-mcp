@@ -54,5 +54,5 @@ Replace `<CATEGORY_ID>` with the Staff Items category ID.
 
 ## After Creating the Module
 
-- Set article ordering within the category using `joomla_update_article` with `ordering: -1` for first, then `ordering: <prev_article_id>` for each subsequent article
+- Set article ordering within the category using `joomla_article(action: "update", ordering: -1)` for first, then `ordering: <prev_article_id>` for each subsequent article
 - Staff photos: articles have no images until headshots are uploaded to `images/stories/` — flag this to the user

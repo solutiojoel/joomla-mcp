@@ -7,12 +7,12 @@ Use this guide when editing, writing, or reviewing article content. Read `editin
 ## Content Editing Workflow
 
 ### Finding Content
-- Use `joomla_list_articles` with the `search` parameter to find articles by name
-- Use `joomla_get_article` to fetch full content before editing
+- Use `joomla_article(action: "list", search: "...")` to find articles by name
+- Use `joomla_article(action: "get", id: ...)` to fetch full content before editing
 - Always read the existing content before proposing changes
 
 ### Editing Articles
-- Use `joomla_update_article` — never delete and recreate
+- Use `joomla_article(action: "update", ...)` — never delete and recreate
 - Required fields to preserve unless changing: `title`, `alias`, `categoryId`, `state`
 - Only pass fields you intend to change; unset fields are left as-is
 
@@ -39,7 +39,7 @@ When updating content, also check and update:
 ## Batch Content Work
 
 When updating multiple articles:
-1. List all targets with `joomla_list_articles` first
+1. List all targets with `joomla_article(action: "list")` first
 2. Present the list to the user for confirmation before making any changes
 3. Update one at a time and report progress after each
 
@@ -60,7 +60,7 @@ When updating multiple articles:
 
 ### Deleting Categories
 - Always confirm with the user before deleting
-- Check that the category has no articles assigned (`joomla_list_articles` filtered by category) before proceeding
+- Check that the category has no articles assigned (`joomla_article(action: "list", category_id: ...)`) before proceeding
 
 ## Content That Requires Care
 

@@ -26,7 +26,7 @@ Username and password come from the server's environment variables (`JOOMLA_USER
 
 Always use `joomla_update_*` tools to modify existing items. Never delete an item and recreate it — this causes alias conflicts and can break menu links, module assignments, and URL routing.
 
-- Use `joomla_update_article` not delete + create
+- Use `joomla_article(action: "update", ...)` not delete + create
 - Use `joomla_update_module` not delete + create
 - Use `joomla_update_menu_item` not delete + create
 

@@ -5930,7 +5930,8 @@ export class JoomlaClient {
     };
 
     const result = await this.postPage(newUserUrl, formData);
-    const errorMsg = this.extractAlertMessage(result.html);
+    const saved = result.html.includes("User saved") || result.html.includes("has been saved");
+    const errorMsg = saved ? null : this.extractAlertMessage(result.html);
     if (errorMsg) return { success: false, message: errorMsg };
 
     const listed = await this.listUsers(data.email);
@@ -5993,7 +5994,8 @@ export class JoomlaClient {
     if (data.block !== undefined) formData["jform[block]"] = data.block ? "1" : "0";
 
     const result = await this.postPage(editUrl, formData);
-    const errorMsg = this.extractAlertMessage(result.html);
+    const saved = result.html.includes("User saved") || result.html.includes("has been saved");
+    const errorMsg = saved ? null : this.extractAlertMessage(result.html);
     if (errorMsg) return { success: false, message: errorMsg };
 
     const verify = await this.getUser(id);
@@ -6002,6 +6004,220 @@ export class JoomlaClient {
       message: verify.success ? "User updated" : "User form submitted but readback failed",
       data: verify.data,
     };
+  }
+
+  // ==================== GROUPS ====================
+
+  async listGroups(): Promise<JoomlaResponse> {
+    const url = this.getAdminUrl("index.php?option=com_users&view=groups&list[limit]=500");
+    const { html } = await this.getPage(url);
+    const groups = this.parseGroupList(html);
+    return { success: true, message: `Found ${groups.length} group(s)`, data: groups };
+  }
+
+  private parseGroupList(html: string): Array<Record<string, unknown>> {
+    const $ = this.$c(html);
+    const groups: Array<Record<string, unknown>> = [];
+    $("tr").each((_, el) => {
+      const $row = $(el);
+      const cid = $row.find("input[name='cid[]']").attr("value");
+      if (!cid) return;
+      const $cells = $row.find("td");
+      const titleCell = $cells.eq(1);
+      const title = titleCell.find("a").first().text().trim();
+      if (!title) return;
+      const rawText = titleCell.text().trim();
+      const depth = (rawText.match(/^[\s–—|\-]+/) || [""])[0].replace(/[^–—|\-]/g, "").length;
+      const enabledUsers = $cells.eq(2).text().trim();
+      const disabledUsers = $cells.eq(3).text().trim();
+      groups.push({ id: cid, title, depth, enabledUsers, disabledUsers });
+    });
+    return groups;
+  }
+
+  async createGroup(data: { title: string; parentId?: string }): Promise<JoomlaResponse> {
+    // GET uses task=group.add but the form action posts to layout=edit&id=0
+    const getUrl = this.getAdminUrl("index.php?option=com_users&task=group.add");
+    const postUrl = this.getAdminUrl("index.php?option=com_users&layout=edit&id=0");
+    const { html } = await this.getPage(getUrl);
+    const token = this.extractCsrfToken(html);
+    if (!token) return { success: false, message: "Failed to extract CSRF token" };
+
+    const formData: FormDataMap = {
+      ...this.extractFormFields(html),
+      task: "group.save",
+      "jform[title]": data.title,
+      "jform[parent_id]": data.parentId ?? "1",
+      [token.name]: token.value,
+    };
+
+    const result = await this.postPage(postUrl, formData);
+    const saved = result.html.includes("Group saved") || result.html.includes("has been saved");
+    const errorMsg = saved ? null : this.extractAlertMessage(result.html);
+    if (errorMsg) return { success: false, message: errorMsg };
+
+    const listed = await this.listGroups();
+    const groups = listed.data as Array<Record<string, unknown>>;
+    const found = groups?.find((g) => g.title === data.title);
+    if (!found) return { success: false, message: "Group submitted but could not verify creation" };
+    return { success: true, message: `Group created (ID: ${found.id})`, data: found };
+  }
+
+  async deleteGroup(id: string): Promise<JoomlaResponse> {
+    const listUrl = this.getAdminUrl("index.php?option=com_users&view=groups");
+    const { html } = await this.getPage(listUrl);
+    const token = this.extractCsrfToken(html);
+    if (!token) return { success: false, message: "Failed to extract CSRF token" };
+
+    const formData: FormDataMap = {
+      task: "groups.delete",
+      "cid[]": [id],
+      boxchecked: "1",
+      [token.name]: token.value,
+    };
+
+    const result = await this.postPage(listUrl, formData);
+    const listed = await this.listGroups();
+    const groups = listed.data as Array<Record<string, unknown>>;
+    const stillExists = groups?.some((g) => String(g.id) === String(id));
+    return {
+      success: !stillExists,
+      message: stillExists
+        ? (this.extractAlertMessage(result.html) ?? "Group deletion submitted but group still exists")
+        : "Group deleted",
+    };
+  }
+
+  // ==================== PERMISSIONS ====================
+
+  private parseRulesFromHtml(html: string): Record<string, Record<string, string>> {
+    const $ = this.$c(html);
+    const rules: Record<string, Record<string, string>> = {};
+    $("select[name]").each((_, el) => {
+      const name = $(el).attr("name") || "";
+      const match = name.match(/jform\[rules\]\[([^\]]+)\]\[([^\]]+)\]/);
+      if (!match) return;
+      const [, action, groupId] = match;
+      const selected = $(el).find("option[selected]").first();
+      const value = selected.length ? (selected.attr("value") ?? "") : "";
+      if (!rules[groupId]) rules[groupId] = {};
+      rules[groupId][action] = value;
+    });
+    return rules;
+  }
+
+  async getCategoryPermissions(id: string, extension = "com_content"): Promise<JoomlaResponse> {
+    const editUrl = this.getAdminUrl(
+      `index.php?option=com_categories&task=category.edit&id=${id}&extension=${extension}`
+    );
+    const { html } = await this.getPage(editUrl);
+    const $ = this.$c(html);
+    const title = $('input[name="jform[title]"]').attr("value") || `Category ${id}`;
+    const rules = this.parseRulesFromHtml(html);
+
+    if (!Object.keys(rules).length) {
+      return {
+        success: false,
+        message: "No permission rules found — category may not exist or permissions tab is not rendered in the HTML",
+      };
+    }
+
+    const groupList = await this.listGroups();
+    const groupNames: Record<string, string> = {};
+    for (const g of (groupList.data as Array<Record<string, unknown>>) ?? []) {
+      groupNames[String(g.id)] = String(g.title);
+    }
+
+    return {
+      success: true,
+      message: `Permissions for category "${title}" (ID: ${id})`,
+      data: { categoryId: id, title, rules, groupNames },
+    };
+  }
+
+  async setCategoryPermissions(
+    id: string,
+    rules: Record<string, Record<string, string>>,
+    extension = "com_content"
+  ): Promise<JoomlaResponse> {
+    const editUrl = this.getAdminUrl(
+      `index.php?option=com_categories&task=category.edit&id=${id}&extension=${extension}`
+    );
+    const { html } = await this.getPage(editUrl);
+    const token = this.extractCsrfToken(html);
+    if (!token) return { success: false, message: "Failed to extract CSRF token" };
+
+    const formData: FormDataMap = {
+      ...this.extractFormFields(html, "item-form"),
+      task: "category.save",
+      [token.name]: token.value,
+    };
+
+    for (const [groupId, actions] of Object.entries(rules)) {
+      for (const [action, value] of Object.entries(actions)) {
+        formData[`jform[rules][${action}][${groupId}]`] = value;
+      }
+    }
+
+    const result = await this.postPage(editUrl, formData);
+    const saved = result.html.includes("Category saved") || result.html.includes("has been saved");
+    const errorMsg = saved ? null : this.extractAlertMessage(result.html);
+    if (errorMsg) return { success: false, message: errorMsg };
+
+    return await this.getCategoryPermissions(id, extension);
+  }
+
+  async getArticlePermissions(id: string): Promise<JoomlaResponse> {
+    const editUrl = this.getAdminUrl(`index.php?option=com_content&task=article.edit&id=${id}`);
+    const { html } = await this.getPage(editUrl);
+    const $ = this.$c(html);
+    const title = $('input[name="jform[title]"]').attr("value") || `Article ${id}`;
+    const rules = this.parseRulesFromHtml(html);
+
+    if (!Object.keys(rules).length) {
+      return {
+        success: false,
+        message: "No permission rules found — article may not exist or does not have article-level ACL configured",
+      };
+    }
+
+    const groupList = await this.listGroups();
+    const groupNames: Record<string, string> = {};
+    for (const g of (groupList.data as Array<Record<string, unknown>>) ?? []) {
+      groupNames[String(g.id)] = String(g.title);
+    }
+
+    return {
+      success: true,
+      message: `Permissions for article "${title}" (ID: ${id})`,
+      data: { articleId: id, title, rules, groupNames },
+    };
+  }
+
+  async setArticlePermissions(id: string, rules: Record<string, Record<string, string>>): Promise<JoomlaResponse> {
+    const editUrl = this.getAdminUrl(`index.php?option=com_content&task=article.edit&id=${id}`);
+    const { html } = await this.getPage(editUrl);
+    const token = this.extractCsrfToken(html);
+    if (!token) return { success: false, message: "Failed to extract CSRF token" };
+
+    const formData: FormDataMap = {
+      ...this.extractFormFields(html, "adminForm"),
+      task: "article.save",
+      [token.name]: token.value,
+    };
+
+    for (const [groupId, actions] of Object.entries(rules)) {
+      for (const [action, value] of Object.entries(actions)) {
+        formData[`jform[rules][${action}][${groupId}]`] = value;
+      }
+    }
+
+    const result = await this.postPage(editUrl, formData);
+    const saved = result.html.includes("Article saved") || result.html.includes("has been saved");
+    const errorMsg = saved ? null : this.extractAlertMessage(result.html);
+    if (errorMsg) return { success: false, message: errorMsg };
+
+    return await this.getArticlePermissions(id);
   }
 
   private decodeHtml(html: string): string {

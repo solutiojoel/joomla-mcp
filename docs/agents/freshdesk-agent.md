@@ -62,7 +62,7 @@ Review any known quirks for this site before starting investigation.
 
 Read the full ticket description and conversation thread, then investigate using Joomla tools. Common starting points by issue type:
 
-- **Article / content missing or wrong**: `joomla_list_articles(search: "...")`, `joomla_get_article(id: ...)`
+- **Article / content missing or wrong**: `joomla_article(action: "list", search: "...")`, `joomla_article(action: "get", id: ...)`
 - **Page not found / menu broken**: `joomla_list_menus()`, `joomla_list_menu_items(menuId: ...)`
 - **Module not showing / wrong position**: `joomla_list_modules()`, `joomla_get_module(id: ...)`
 - **Visual / layout issue**: `joomla_get_frontend_page(path: "...")`, screenshot tools
