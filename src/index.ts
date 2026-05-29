@@ -1890,6 +1890,78 @@ const tools = [
       required: [],
     },
   },
+  // ==================== USER MANAGEMENT ====================
+  {
+    name: "joomla_list_users",
+    description:
+      "List Joomla users with optional filters. Use 'search' to find a user by name or email, 'group_id' to filter by user group (e.g. 18 = 4th Grade), 'state' to filter by enabled/blocked. Returns id, name, username, enabled status, groups, email, last visit date.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        search: { type: "string", description: "Filter by name or email (server-side search)" },
+        group_id: { type: "string", description: "Filter by user group ID (e.g. '15' for 1st Grade, '18' for 4th Grade)" },
+        state: { type: "string", enum: ["0", "1"], description: "Filter by enabled state: 0=enabled, 1=blocked" },
+        limit: { type: "number", description: "Results per page (default: 200, max: 500)" },
+        page: { type: "number", description: "Page number, 1-based (default: 1)" },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "joomla_get_user",
+    description:
+      "Get full details for a Joomla user by ID. Returns name, username, email, blocked status, and groups (with IDs and names). Use joomla_list_users to find the ID first.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Joomla user ID" },
+      },
+      required: ["id"],
+    },
+  },
+  {
+    name: "joomla_create_user",
+    description:
+      "Create a new Joomla user account. Assign one or more group IDs — for teachers, always include the 'Basic Editor' group (12) plus the grade-specific group. Returns the new user's ID on success.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Full display name (e.g. 'Mrs. Camri Cooper')" },
+        username: { type: "string", description: "Login username — typically the email address" },
+        email: { type: "string", description: "Email address" },
+        password: { type: "string", description: "Initial password" },
+        groups: {
+          type: "array",
+          items: { type: "string" },
+          description: "User group IDs to assign. For teachers: ['12', '<grade-group-id>'] where 12=Basic Editor. Grade group IDs: 15=1st, 16=2nd, 17=3rd, 18=4th, 19=5th, 20=6th, 33=7th, 23=8th, 14=Kindergarten, 26=Pre-K.",
+        },
+        block: { type: "boolean", description: "Set to true to create the account as blocked (default: false = enabled)" },
+      },
+      required: ["name", "username", "email", "password", "groups"],
+    },
+  },
+  {
+    name: "joomla_update_user",
+    description:
+      "Update an existing Joomla user account. Only provide fields you want to change — all others are preserved. To block/disable an account use block=true; to re-enable use block=false. To change a teacher's grade, update 'groups' with the new grade group ID plus Basic Editor (12). Leave 'password' empty to keep the existing password.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Joomla user ID" },
+        name: { type: "string", description: "New display name" },
+        username: { type: "string", description: "New login username" },
+        email: { type: "string", description: "New email address" },
+        password: { type: "string", description: "New password (omit to keep existing)" },
+        block: { type: "boolean", description: "true=block the account, false=enable it" },
+        groups: {
+          type: "array",
+          items: { type: "string" },
+          description: "Full replacement group list (all groups must be listed — any omitted group is removed). Grade group IDs: 15=1st, 16=2nd, 17=3rd, 18=4th, 19=5th, 20=6th, 33=7th, 23=8th, 14=Kindergarten, 26=Pre-K, 12=Basic Editor.",
+        },
+      },
+      required: ["id"],
+    },
+  },
   {
     name: "freshdesk_update_ticket",
     description:
@@ -3210,6 +3282,61 @@ server.setRequestHandler(CallToolRequestSchema, async (request: { params: { name
           status: args?.status as number | undefined,
           priority: args?.priority as number | undefined,
           tags: args?.tags as string[] | undefined,
+        });
+        return { content: [{ type: "text", text: formatResult(result) }], isError: !result.success };
+      }
+
+      // ==================== USER MANAGEMENT ====================
+
+      case "joomla_list_users": {
+        const login = await ensureLoggedIn();
+        if (!login.success) return { content: [{ type: "text", text: formatResult(login) }], isError: true };
+        const result = await joomla.listUsers(
+          args?.search as string | undefined,
+          args?.group_id as string | undefined,
+          args?.state as string | undefined,
+          args?.limit as number | undefined,
+          args?.page as number | undefined,
+        );
+        return { content: [{ type: "text", text: formatResult(result) }], isError: !result.success };
+      }
+
+      case "joomla_get_user": {
+        const login = await ensureLoggedIn();
+        if (!login.success) return { content: [{ type: "text", text: formatResult(login) }], isError: true };
+        const id = args?.id as string;
+        if (!id) return { content: [{ type: "text", text: "Error: id is required" }], isError: true };
+        const result = await joomla.getUser(id);
+        return { content: [{ type: "text", text: formatResult(result) }], isError: !result.success };
+      }
+
+      case "joomla_create_user": {
+        const login = await ensureLoggedIn();
+        if (!login.success) return { content: [{ type: "text", text: formatResult(login) }], isError: true };
+        const name = args?.name as string;
+        const username = args?.username as string;
+        const email = args?.email as string;
+        const password = args?.password as string;
+        const groups = args?.groups as string[];
+        if (!name || !username || !email || !password || !groups?.length) {
+          return { content: [{ type: "text", text: "Error: name, username, email, password, and groups are required" }], isError: true };
+        }
+        const result = await joomla.createUser({ name, username, email, password, groups, block: args?.block as boolean | undefined });
+        return { content: [{ type: "text", text: formatResult(result) }], isError: !result.success };
+      }
+
+      case "joomla_update_user": {
+        const login = await ensureLoggedIn();
+        if (!login.success) return { content: [{ type: "text", text: formatResult(login) }], isError: true };
+        const id = args?.id as string;
+        if (!id) return { content: [{ type: "text", text: "Error: id is required" }], isError: true };
+        const result = await joomla.updateUser(id, {
+          name: args?.name as string | undefined,
+          username: args?.username as string | undefined,
+          email: args?.email as string | undefined,
+          password: args?.password as string | undefined,
+          block: args?.block as boolean | undefined,
+          groups: args?.groups as string[] | undefined,
         });
         return { content: [{ type: "text", text: formatResult(result) }], isError: !result.success };
       }

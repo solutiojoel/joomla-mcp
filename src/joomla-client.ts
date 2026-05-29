@@ -5823,6 +5823,187 @@ export class JoomlaClient {
     };
   }
 
+  // ==================== USERS ====================
+
+  async listUsers(search?: string, groupId?: string, state?: string, limit?: number, page?: number): Promise<JoomlaResponse> {
+    const effectiveLimit = Math.min(limit ?? 200, 500);
+    const effectivePage = Math.max(page ?? 1, 1);
+    const limitStart = (effectivePage - 1) * effectiveLimit;
+    const params = new URLSearchParams({
+      option: "com_users",
+      view: "users",
+      limit: String(effectiveLimit),
+      limitstart: String(limitStart),
+    });
+    if (search) params.set("filter[search]", search);
+    if (groupId) params.set("filter[group_id]", groupId);
+    if (state !== undefined && state !== "") params.set("filter[state]", state);
+    const url = this.getAdminUrl(`index.php?${params.toString()}`);
+    const { html } = await this.getPage(url);
+    const users = this.parseUserList(html);
+    return {
+      success: true,
+      message: `Found ${users.length} user(s)${search ? `, search="${search}"` : ""}`,
+      data: users,
+    };
+  }
+
+  private parseUserList(html: string): Array<Record<string, unknown>> {
+    const $ = this.$c(html);
+    const users: Array<Record<string, unknown>> = [];
+    $("tr").each((_, el) => {
+      const $row = $(el);
+      const cid = $row.find("input[name='cid[]']").attr("value");
+      if (!cid) return;
+      const rowHtml = $.html($row) || "";
+      const $cells = $row.find("td");
+      const nameLink = $cells.eq(1).find("a[href*='task=user.edit']").first();
+      const name = nameLink.text().trim();
+      if (!name) return;
+      const username = $cells.eq(2).text().trim();
+      // Enabled = icon-unpublish present (toggle to block = currently enabled)
+      const enabled = /icon-unpublish|users\.block/.test(rowHtml);
+      const groupsText = $cells.eq(5).text().trim();
+      const email = $cells.eq(6).text().trim();
+      const lastVisitDate = $cells.eq(7).text().trim();
+      const registrationDate = $cells.eq(8).text().trim();
+      users.push({ id: cid, name, username, enabled, groups: groupsText, email, lastVisitDate, registrationDate });
+    });
+    return users;
+  }
+
+  async getUser(id: string): Promise<JoomlaResponse> {
+    const editUrl = this.getAdminUrl(`index.php?option=com_users&task=user.edit&id=${id}`);
+    const { html } = await this.getPage(editUrl);
+    const $ = this.$c(html);
+    const nameField = $('input[name="jform[name]"]');
+    if (!nameField.length) {
+      return { success: false, message: `User ${id} not found or access denied` };
+    }
+    const name = nameField.attr("value") || "";
+    const username = $('input[name="jform[username]"]').attr("value") || "";
+    const email = $('input[name="jform[email]"]').attr("value") || "";
+    // block=0 means enabled, block=1 means blocked. Find the checked radio.
+    const blockedRadioValue = $('input[name="jform[block]"][checked]').attr("value") ?? "0";
+    const blocked = blockedRadioValue === "1";
+    const groups: Array<{ id: string; name: string }> = [];
+    $('input[name="jform[groups][]"][checked]').each((_, el) => {
+      const $el = $(el);
+      const groupId = $el.attr("value") || "";
+      const label = $(`label[for="${$el.attr("id")}"]`).text().trim().replace(/^[\s–—|\-]+/, "").trim();
+      if (groupId) groups.push({ id: groupId, name: label });
+    });
+    return {
+      success: true,
+      message: "User retrieved",
+      data: { id, name, username, email, blocked, groups },
+    };
+  }
+
+  async createUser(data: {
+    name: string;
+    username: string;
+    email: string;
+    password: string;
+    groups: string[];
+    block?: boolean;
+  }): Promise<JoomlaResponse> {
+    const newUserUrl = this.getAdminUrl("index.php?option=com_users&view=user&layout=edit");
+    const { html } = await this.getPage(newUserUrl);
+    const token = this.extractCsrfToken(html);
+    if (!token) return { success: false, message: "Failed to extract CSRF token" };
+
+    const baseFields = this.extractFormFields(html);
+    delete baseFields["jform[groups][]"];
+
+    const formData: FormDataMap = {
+      ...baseFields,
+      task: "user.save",
+      "jform[name]": data.name,
+      "jform[username]": data.username,
+      "jform[email]": data.email,
+      "jform[password]": data.password,
+      "jform[password2]": data.password,
+      "jform[block]": data.block ? "1" : "0",
+      "jform[groups][]": data.groups,
+      [token.name]: token.value,
+    };
+
+    const result = await this.postPage(newUserUrl, formData);
+    const errorMsg = this.extractAlertMessage(result.html);
+    if (errorMsg) return { success: false, message: errorMsg };
+
+    const listed = await this.listUsers(data.email);
+    const found = (listed.data as Array<Record<string, unknown>>)?.find((u) => u.email === data.email);
+    const createdId = found ? String(found.id) : "";
+
+    if (!createdId) {
+      return { success: false, message: "User form submitted but could not verify creation — check the admin backend" };
+    }
+
+    const verify = await this.getUser(createdId);
+    return {
+      success: verify.success,
+      message: verify.success ? `User created (ID: ${createdId})` : "User may have been created but readback failed",
+      data: verify.data,
+    };
+  }
+
+  async updateUser(
+    id: string,
+    data: {
+      name?: string;
+      username?: string;
+      email?: string;
+      password?: string;
+      block?: boolean;
+      groups?: string[];
+    }
+  ): Promise<JoomlaResponse> {
+    const editUrl = this.getAdminUrl(`index.php?option=com_users&task=user.edit&id=${id}`);
+    const { html } = await this.getPage(editUrl);
+    const token = this.extractCsrfToken(html);
+    if (!token) return { success: false, message: "Failed to extract CSRF token" };
+
+    const $ = this.$c(html);
+    const existingGroups: string[] = [];
+    $('input[name="jform[groups][]"][checked]').each((_, el) => {
+      const v = $(el).attr("value");
+      if (v) existingGroups.push(v);
+    });
+
+    const baseFields = this.extractFormFields(html);
+    delete baseFields["jform[groups][]"];
+
+    const formData: FormDataMap = {
+      ...baseFields,
+      task: "user.save",
+      "jform[id]": id,
+      "jform[groups][]": data.groups ?? existingGroups,
+      [token.name]: token.value,
+    };
+
+    if (data.name !== undefined) formData["jform[name]"] = data.name;
+    if (data.username !== undefined) formData["jform[username]"] = data.username;
+    if (data.email !== undefined) formData["jform[email]"] = data.email;
+    if (data.password !== undefined) {
+      formData["jform[password]"] = data.password;
+      formData["jform[password2]"] = data.password;
+    }
+    if (data.block !== undefined) formData["jform[block]"] = data.block ? "1" : "0";
+
+    const result = await this.postPage(editUrl, formData);
+    const errorMsg = this.extractAlertMessage(result.html);
+    if (errorMsg) return { success: false, message: errorMsg };
+
+    const verify = await this.getUser(id);
+    return {
+      success: verify.success,
+      message: verify.success ? "User updated" : "User form submitted but readback failed",
+      data: verify.data,
+    };
+  }
+
   private decodeHtml(html: string): string {
     return this.decodeHtmlEntities(html)
       .replace(/\\n/g, "\n")
