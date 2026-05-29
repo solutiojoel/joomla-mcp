@@ -1593,6 +1593,68 @@ const tools = [
       required: [],
     },
   },
+  {
+    name: "joomla_workspace_write",
+    description:
+      "Write a file into the /app/workspace/ directory inside the container. " +
+      "Use this to ferry AI-generated content (JSON, YAML, HTML, etc.) into the " +
+      "server sandbox so that other tools (like filePath-based importers) can read it. " +
+      "The bind-mount makes /app/workspace/ the same as the C:\\joomla-mcp-update\\ " +
+      "folder on the host, so written files are also visible on disk. " +
+      "Path must be relative and must not contain '..'.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: {
+          type: "string",
+          description: "Relative file path under /app/workspace/ (e.g. 'blueprints/home.json'). Must not contain '..'.",
+        },
+        content: {
+          type: "string",
+          description: "File content to write (text, JSON, YAML, etc.).",
+        },
+      },
+      required: ["path", "content"],
+    },
+  },
+  {
+    name: "joomla_verify_frontend_content",
+    description:
+      "Verify that specific text strings are present or absent in a frontend page's " +
+      "rendered content, and that specific CSS classes are present or absent anywhere " +
+      "in the page HTML. Useful for confirming that a change has taken effect on the " +
+      "live site. Returns per-check pass/fail results and an overall success flag.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: {
+          type: "string",
+          description: "Frontend path (e.g. '/about-us') or full URL",
+        },
+        text_present: {
+          type: "array",
+          items: { type: "string" },
+          description: "Strings that MUST appear in the page text content",
+        },
+        text_absent: {
+          type: "array",
+          items: { type: "string" },
+          description: "Strings that must NOT appear in the page text content",
+        },
+        css_present: {
+          type: "array",
+          items: { type: "string" },
+          description: "CSS class names that MUST appear somewhere in the page HTML",
+        },
+        css_absent: {
+          type: "array",
+          items: { type: "string" },
+          description: "CSS class names that must NOT appear anywhere in the page HTML",
+        },
+      },
+      required: ["path"],
+    },
+  },
 ];
 
 // Register tool handlers
@@ -1607,6 +1669,23 @@ server.setRequestHandler(CallToolRequestSchema, async (request: { params: { name
 
   if (config.disabledTools.has(name.toLowerCase())) {
     return { content: [{ type: "text", text: JSON.stringify({ success: false, message: `Tool "${name}" is currently disabled.` }) }] };
+  }
+
+  // ── Auto site-switch ──────────────────────────────────────────────────────
+  // If site_url is present in args (injected by the orchestrator), switch to
+  // that site before running any tool. This lets the orchestrator target any
+  // Joomla install without restarting the container.
+  {
+    const incomingSite = args?.site_url as string | undefined;
+    if (incomingSite) {
+      const cfg = joomla.getConfig();
+      const currentBase = cfg.baseUrl.replace(/\/administrator\/?$/i, '').replace(/\/+$/, '');
+      const newBase = incomingSite.replace(/\/administrator\/?$/i, '').replace(/\/+$/, '');
+      if (currentBase !== newBase) {
+        joomla.switchSite(incomingSite);
+        isLoggedIn = false;
+      }
+    }
   }
 
   try {
@@ -2766,6 +2845,89 @@ server.setRequestHandler(CallToolRequestSchema, async (request: { params: { name
         };
       }
 
+      case "joomla_verify_frontend_content": {
+        const login = await ensureLoggedIn();
+        if (!login.success) return { content: [{ type: "text", text: formatResult(login) }], isError: true };
+
+        const verifyPath = args?.path as string;
+        if (!verifyPath) return { content: [{ type: "text", text: "Error: path is required" }], isError: true };
+
+        const textPresent  = (args?.text_present  as string[] | undefined) ?? [];
+        const textAbsent   = (args?.text_absent   as string[] | undefined) ?? [];
+        const cssPresent   = (args?.css_present   as string[] | undefined) ?? [];
+        const cssAbsent    = (args?.css_absent    as string[] | undefined) ?? [];
+
+        const pageResult = await joomla.getFrontendPageInfo(verifyPath);
+        if (!pageResult.success) {
+          return { content: [{ type: "text", text: formatResult(pageResult) }], isError: true };
+        }
+
+        const pageData = pageResult.data as { rawHtml?: string; bodyText?: string; [k: string]: unknown };
+        const rawHtml  = (pageData.rawHtml  ?? "") as string;
+        const bodyText = (pageData.bodyText ?? "") as string;
+
+        const checks: { check: string; kind: string; target: string; pass: boolean }[] = [];
+
+        for (const t of textPresent) {
+          checks.push({ check: "text_present",  kind: "text", target: t,
+            pass: bodyText.toLowerCase().includes(t.toLowerCase()) });
+        }
+        for (const t of textAbsent) {
+          checks.push({ check: "text_absent",   kind: "text", target: t,
+            pass: !bodyText.toLowerCase().includes(t.toLowerCase()) });
+        }
+        for (const c of cssPresent) {
+          checks.push({ check: "css_present",   kind: "css",  target: c,
+            pass: rawHtml.includes(c) });
+        }
+        for (const c of cssAbsent) {
+          checks.push({ check: "css_absent",    kind: "css",  target: c,
+            pass: !rawHtml.includes(c) });
+        }
+
+        const allPass = checks.every(ch => ch.pass);
+        const failed  = checks.filter(ch => !ch.pass);
+
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify({ success: allPass, url: verifyPath, checks, failed }, null, 2),
+          }],
+          isError: !allPass,
+        };
+      }
+
+
+      case "joomla_workspace_write": {
+        const relPath = args?.path as string;
+        const fileContent = args?.content as string;
+        if (!relPath) return { content: [{ type: "text", text: "Error: path is required" }], isError: true };
+        if (fileContent === undefined || fileContent === null)
+          return { content: [{ type: "text", text: "Error: content is required" }], isError: true };
+        // Sanitise: no directory traversal
+        if (relPath.includes("..") || path.isAbsolute(relPath))
+          return { content: [{ type: "text", text: "Error: path must be relative and must not contain '..'" }], isError: true };
+        const workspaceDir = path.join(process.cwd(), "workspace");
+        const destPath = path.join(workspaceDir, relPath);
+        // Confirm destination is still under workspaceDir
+        if (!destPath.startsWith(workspaceDir + path.sep) && destPath !== workspaceDir)
+          return { content: [{ type: "text", text: "Error: resolved path escapes workspace directory" }], isError: true };
+        fs.mkdirSync(path.dirname(destPath), { recursive: true });
+        fs.writeFileSync(destPath, fileContent, "utf8");
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify({
+              success: true,
+              message: `Written ${fileContent.length} bytes`,
+              containerPath: destPath,
+              workspacePath: relPath,
+            }, null, 2),
+          }],
+          isError: false,
+        };
+      }
+
       default:
         return {
           content: [{ type: "text", text: `Unknown tool: ${name}` }],
@@ -2820,32 +2982,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request: { params: { name
 }
 
 async function startHttp(port: number): Promise<void> {
-  const validTokens = new Set(
-    Object.entries(process.env)
-      .filter(([k]) => k.startsWith("MCP_TOKEN_"))
-      .map(([, v]) => v as string)
-      .filter(Boolean)
-  );
-
-  if (validTokens.size === 0) {
-    console.error("WARNING: No MCP_TOKEN_* env vars found. All HTTP requests will be rejected.");
-  } else {
-    console.error(`Team access configured for ${validTokens.size} member(s).`);
-  }
-
   const sessions = new Map<string, StreamableHTTPServerTransport>();
 
   const httpServer = http.createServer(async (req, res) => {
     const reqUrl = new URL(req.url ?? "/", `http://${req.headers.host}`);
-    const auth = req.headers["authorization"] ?? "";
-    const headerToken = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-    const queryToken = reqUrl.searchParams.get("token") ?? "";
-    const token = headerToken || queryToken;
-    if (!token || !validTokens.has(token)) {
-      res.writeHead(401, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: "Unauthorized" }));
-      return;
-    }
 
     const urlPath = reqUrl.pathname;
     if (urlPath !== "/mcp") {

@@ -661,11 +661,11 @@ export class JoomlaClient {
   }
 
   private getSnapshotDir(): string {
-    return path.resolve(process.cwd(), "snapshots");
+    return path.resolve(__dirname, "..", "snapshots");
   }
 
   private getBlueprintDir(kind = ""): string {
-    return path.resolve(process.cwd(), "blueprints", kind);
+    return path.resolve(__dirname, "..", "blueprints", kind);
   }
 
   private getSnapshotPath(snapshotId: string): string {
@@ -4438,10 +4438,17 @@ export class JoomlaClient {
       };
     }
 
+    // Auto-snapshot the current live layout so saveGantry5LayoutRaw has a valid
+    // snapshotId (needed for CSRF validation / race-condition guard).
+    const snap = await this.snapshotTarget({ kind: "gantryLayout", outline, theme });
+    if (!snap.success) return snap;
+    const snapshotId = String((snap.data as Record<string, unknown>).snapshotId || "");
+
     const save = await this.saveGantry5LayoutRaw(outline, {
       root: resolvedRoot,
       preset,
       theme,
+      snapshotId,
     });
 
     return {
@@ -5531,7 +5538,7 @@ export class JoomlaClient {
       data: {
         url, pageTitle, cleanTitle, h1, metaDescription, canonicalUrl,
         headings, bodyText, links, images, forms, openGraph, structuredData,
-        joomlaTemplate, joomlaContext, articleTitles, modulePositions,
+        joomlaTemplate, joomlaContext, articleTitles, modulePositions, rawHtml: html,
       },
     };
   }

@@ -1,7 +1,8 @@
 FROM node:22-slim
 
-# Chrome system dependencies
+# Install Chromium and its system dependencies
 RUN apt-get update && apt-get install -y \
+  chromium \
   ca-certificates \
   fonts-liberation \
   libasound2 \
@@ -41,6 +42,10 @@ RUN apt-get update && apt-get install -y \
   xdg-utils \
   --no-install-recommends && rm -rf /var/lib/apt/lists/*
 
+# Tell Puppeteer to skip downloading its own Chrome and use the system Chromium
+ENV PUPPETEER_SKIP_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+
 WORKDIR /app
 
 COPY package*.json ./
@@ -50,5 +55,9 @@ COPY tsconfig.json ./
 COPY src/ ./src/
 
 RUN npm run build && npm prune --omit=dev
+
+EXPOSE 9300
+
+ENV HTTP_PORT=9300
 
 CMD ["node", "dist/index.js"]
