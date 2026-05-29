@@ -222,8 +222,9 @@ export class JoomlaClient {
   }
 
   private findLatestByTitle(items: Array<Record<string, string>>, title: string): Record<string, string> | null {
+    const decodedTitle = this.decodeHtmlEntities(title);
     for (let i = items.length - 1; i >= 0; i -= 1) {
-      if (items[i].title === title) return items[i];
+      if (this.decodeHtmlEntities(items[i].title) === decodedTitle) return items[i];
     }
     return null;
   }
@@ -604,22 +605,29 @@ export class JoomlaClient {
     return { status: response.status, headers: responseHeaders, body };
   }
 
-  private async getPage(url: string): Promise<{ html: string; token: { name: string; value: string } | null }> {
+  private async getPage(url: string, options?: { skipAuthCheck?: boolean }): Promise<{ html: string; token: { name: string; value: string } | null }> {
     const result = await this.request(url);
 
     // Follow redirects
     if ([301, 302, 303, 307, 308].includes(result.status)) {
       const location = result.headers.get("location") || url;
       const redirectUrl = this.resolveUrl(location);
-      return this.getPage(redirectUrl);
+      return this.getPage(redirectUrl, options);
     }
 
-    const token = this.extractCsrfToken(result.body);
+    const html = result.body;
+
+    // Detect session expiry: an admin component URL returned the login form
+    if (!options?.skipAuthCheck && url.includes("/administrator/") && url.includes("option=") && html.includes("mod-login-username")) {
+      throw new Error("SESSION_EXPIRED: Joomla session has expired. Call joomla_login to re-authenticate, then retry.");
+    }
+
+    const token = this.extractCsrfToken(html);
     if (token) {
       this.tokenName = token.name;
     }
 
-    return { html: result.body, token };
+    return { html, token };
   }
 
   private async postPage(
@@ -2275,7 +2283,7 @@ export class JoomlaClient {
     this.gantryOutlineLayoutUrls.clear();
     this.gantryLayoutRootCache.clear();
     const loginUrl = this.getAdminUrl();
-    const result = await this.getPage(loginUrl);
+    const result = await this.getPage(loginUrl, { skipAuthCheck: true });
     const token = this.extractCsrfToken(result.html);
 
     if (!token) {
@@ -2516,7 +2524,7 @@ export class JoomlaClient {
       attempted: true,
       foundInList: !!createdId,
       readbackSucceeded: !!verify?.success,
-      titleMatches: !!verify?.success && article.title === data.title,
+      titleMatches: !!verify?.success && this.decodeHtmlEntities(article.title) === this.decodeHtmlEntities(data.title),
       aliasMatches: !!verify?.success && this.verifyAlias(String(article.alias || ""), data.alias),
       categoryMatches: !!verify?.success && article.categoryId === data.categoryId,
       stateMatches: !!verify?.success && article.state === String(data.state ?? "1"),
@@ -2557,8 +2565,19 @@ export class JoomlaClient {
     }
   ): Promise<JoomlaResponse> {
     const editUrl = this.getAdminUrl(`index.php?option=com_content&task=article.edit&id=${id}`);
-    const { html } = await this.getPage(editUrl);
-    const existingArticle = this.parseArticleForm(html);
+    let { html } = await this.getPage(editUrl);
+    let existingArticle = this.parseArticleForm(html);
+
+    if (!existingArticle.title) {
+      await this.checkInArticle(id);
+      const retry = await this.getPage(editUrl);
+      html = retry.html;
+      existingArticle = this.parseArticleForm(html);
+      if (!existingArticle.title) {
+        return { success: false, message: `Article ${id} form could not be loaded after auto check-in — article may not exist or may require elevated permissions` };
+      }
+    }
+
     const token = this.extractCsrfToken(html);
 
     if (!token) {
@@ -2601,7 +2620,7 @@ export class JoomlaClient {
     const verification = {
       attempted: true,
       readbackSucceeded: verify.success,
-      titleMatches: verify.success && article.title === expectedTitle,
+      titleMatches: verify.success && this.decodeHtmlEntities(article.title) === this.decodeHtmlEntities(expectedTitle),
       aliasMatches: verify.success && article.alias === expectedAlias,
       categoryMatches: verify.success && article.categoryId === expectedCategoryId,
       articleTextMatches: verify.success && this.isEquivalentRichText(String(article.content || ""), expectedArticleText),
@@ -2612,7 +2631,7 @@ export class JoomlaClient {
 
     return {
       success: verified,
-      message: verified ? "Article saved" : (errorMsg ?? successMsg ? "Article save submitted, but updated values were not verified" : "Unknown result"),
+      message: verified ? "Article saved" : (errorMsg ?? (successMsg ? "Article save submitted, but updated values were not verified" : "Unknown result")),
       data: this.buildOperationData("article", id, {
         title: article.title || expectedTitle,
         state: article.state || expectedState,
@@ -2678,22 +2697,20 @@ export class JoomlaClient {
     }
 
   async checkInArticle(id: string, options: { expectedTitle?: string } = {}): Promise<JoomlaResponse> {
-    const before = await this.fetchArticleForm(id);
-    const articleBefore = (before.data || {}) as Record<string, string>;
-    const title = articleBefore.title || "";
-    if (!before.success) {
-      return { success: false, message: `Refusing to check in article ${id} because the current target could not be verified` };
-    }
-    if (options.expectedTitle && title !== options.expectedTitle) {
-      return { success: false, message: `Refusing to check in article ${id}: expected title ${options.expectedTitle}, found ${title}` };
-    }
-
     const listUrl = this.getAdminUrl("index.php?option=com_content&view=articles");
-    const { html } = await this.getPage(listUrl);
-    const token = this.extractCsrfToken(html);
+    const { html: listHtml } = await this.getPage(listUrl);
+    const token = this.extractCsrfToken(listHtml);
 
     if (!token) {
       return { success: false, message: "Failed to extract CSRF token" };
+    }
+
+    if (options.expectedTitle) {
+      const articles = this.parseArticleList(listHtml);
+      const match = articles.find((a) => a.id === id);
+      if (match && match.title !== options.expectedTitle) {
+        return { success: false, message: `Refusing to check in article ${id}: expected title '${options.expectedTitle}', found '${match.title}'` };
+      }
     }
 
     const result = await this.postPage(listUrl, {
@@ -2713,11 +2730,10 @@ export class JoomlaClient {
       success: checkedOutCleared,
       message: checkedOutCleared ? "Article checked in" : (errorMsg ?? "Article check-in submitted, but checkout state was not verified as cleared"),
       data: this.buildOperationData("article", id, {
-        title,
+        title: listedArticle?.title ?? "",
         state: String(listedArticle?.state || ""),
         verification: {
           attempted: true,
-          preflightVerified: true,
           listedAfterCheckIn: !!listedArticle,
           checkedOutCleared,
         },
@@ -2859,7 +2875,7 @@ export class JoomlaClient {
       attempted: true,
       foundInList: !!createdId,
       readbackSucceeded: !!verify?.success,
-      titleMatches: !!verify?.success && category.title === data.title,
+      titleMatches: !!verify?.success && this.decodeHtmlEntities(category.title) === this.decodeHtmlEntities(data.title),
       aliasMatches: !!verify?.success && this.verifyAlias(String(category.alias || ""), data.alias),
       parentMatches: !!verify?.success && category.parentId === String(data.parentId || "1"),
       descriptionMatches: !!verify?.success && this.isEquivalentRichText(String(category.description || ""), String(data.description || "")),
@@ -2922,7 +2938,7 @@ export class JoomlaClient {
     const verification = {
       attempted: true,
       readbackSucceeded: verify.success,
-      titleMatches: verify.success && category.title === String(formData["jform[title]"] || ""),
+      titleMatches: verify.success && this.decodeHtmlEntities(category.title) === this.decodeHtmlEntities(String(formData["jform[title]"] || "")),
       aliasMatches: verify.success && category.alias === String(formData["jform[alias]"] || ""),
       parentMatches: verify.success && category.parentId === String(formData["jform[parent_id]"] || ""),
       descriptionMatches: verify.success && this.isEquivalentRichText(String(category.description || ""), String(formData["jform[description]"] || "")),
@@ -3670,7 +3686,7 @@ export class JoomlaClient {
     const verification = {
       attempted: true,
       readbackSucceeded: verify.success,
-      titleMatches: !!verify.success && String(module.title || "") === String(formData["jform[title]"] || ""),
+      titleMatches: !!verify.success && this.decodeHtmlEntities(String(module.title || "")) === this.decodeHtmlEntities(String(formData["jform[title]"] || "")),
       positionMatches: !!verify.success && String(module.position || "") === String(formData["jform[position]"] || ""),
       publishedMatches: !!verify.success && String(module.published || "") === String(formData["jform[published]"] || ""),
       accessMatches: !!verify.success && String(module.access || "") === String(formData["jform[access]"] || ""),
@@ -3781,7 +3797,7 @@ export class JoomlaClient {
     const module = ((verify?.data || {}) as Record<string, unknown>);
     const expectedModuleType = String(existingModule.moduleType || "").toLowerCase();
     const actualModuleType = String(module.moduleType || "").toLowerCase();
-    const titleMatches = !!verify?.success && String(module.title || "") === data.title;
+    const titleMatches = !!verify?.success && this.decodeHtmlEntities(String(module.title || "")) === this.decodeHtmlEntities(data.title);
     const moduleTypeMatches = !!verify?.success && (!expectedModuleType || actualModuleType === expectedModuleType);
     const verified = !!savedId && titleMatches && moduleTypeMatches;
 
@@ -4950,6 +4966,7 @@ export class JoomlaClient {
     const typedToken = this.extractCsrfToken(typedHtml) || token;
     const request = { ...type.request, ...(data.request || {}) };
     const formData: Record<string, string> = {
+      ...this.extractFormFields(html),
       ...this.extractFormFields(typedHtml),
       task: "item.save",
       "jform[title]": data.title,
@@ -4965,6 +4982,7 @@ export class JoomlaClient {
       "jform[home]": data.home || "0",
       "jform[note]": data.note || "",
       "jform[template_style_id]": data.templateStyleId || "0",
+      "jform[menuordering]": "-2",
       [typedToken.name]: typedToken.value,
     };
 
@@ -4994,7 +5012,7 @@ export class JoomlaClient {
       attempted: true,
       foundInList: !!savedId,
       readbackSucceeded: !!verify?.success,
-      titleMatches: !!verify?.success && String(item.title || "") === data.title,
+      titleMatches: !!verify?.success && this.decodeHtmlEntities(String(item.title || "")) === this.decodeHtmlEntities(data.title),
       aliasMatches: !!verify?.success && this.verifyAlias(String(item.alias || ""), data.alias),
       menuTypeMatches: !!verify?.success && String(item.menuType || "") === data.menuType,
       parentMatches: !!verify?.success && String(item.parentId || "") === String(data.parentId || "1"),
@@ -5086,14 +5104,19 @@ export class JoomlaClient {
     }
 
     const request = { ...((type?.request || existing.request) as Record<string, string>), ...(data.request || {}) };
+    const aliasTarget = data.params?.aliasoptions;
+    const effectiveType = type?.title ?? String(existing.type || "");
+    const aliasLink = aliasTarget && (effectiveType === "alias" || data.itemType === "alias")
+      ? `index.php?Itemid=${aliasTarget}`
+      : undefined;
     const formData: Record<string, string> = {
       ...this.extractFormFields(formBaseHtml),
       task: "item.save",
       "jform[title]": data.title ?? String(existing.title || ""),
       "jform[alias]": data.alias ?? String(existing.alias || ""),
       "jform[menutype]": data.menuType ?? String(existing.menuType || ""),
-      "jform[type]": type?.encoded ?? String(existing.type || ""),
-      "jform[link]": data.link ?? (type ? this.buildLinkFromRequest(request) : String(existing.link || this.buildLinkFromRequest(request))),
+      "jform[type]": type ? (this.extractFormFields(formBaseHtml)["jform[type]"] || type.title) : String(existing.type || ""),
+      "jform[link]": data.link ?? aliasLink ?? (type ? this.buildLinkFromRequest(request) : String(existing.link || this.buildLinkFromRequest(request))),
       "jform[parent_id]": data.parentId ?? String(existing.parentId || "1"),
       "jform[published]": data.published ?? String(existing.published || "1"),
       "jform[access]": data.access ?? String(existing.access || "1"),
@@ -5119,6 +5142,16 @@ export class JoomlaClient {
 
     Object.assign(formData, data.fieldOverrides || {});
 
+    // For alias items: ensure jform[link] reflects the aliasoptions target so Joomla
+    // saves it correctly and the form readback returns the right value.
+    const overrideAlias = data.fieldOverrides?.["jform[params][aliasoptions]"];
+    if (overrideAlias && !data.link && !aliasLink) {
+      const effectiveFormType = formData["jform[type]"] || "";
+      if (effectiveFormType === "alias" || effectiveFormType.includes("alias")) {
+        formData["jform[link]"] = `index.php?Itemid=${overrideAlias}`;
+      }
+    }
+
     const result = await this.postPage(editUrl, formData);
     const successMsg = /menu item saved|item saved|has been saved/i.test(result.html);
     const errorMsg = this.extractAlertMessage(result.html);
@@ -5127,7 +5160,7 @@ export class JoomlaClient {
     const verification = {
       attempted: true,
       readbackSucceeded: verify.success,
-      titleMatches: !!verify.success && String(item.title || "") === String(formData["jform[title]"] || ""),
+      titleMatches: !!verify.success && this.decodeHtmlEntities(String(item.title || "")) === this.decodeHtmlEntities(String(formData["jform[title]"] || "")),
       aliasMatches: !!verify.success && String(item.alias || "") === String(formData["jform[alias]"] || ""),
       menuTypeMatches: !!verify.success && String(item.menuType || "") === String(formData["jform[menutype]"] || ""),
       parentMatches: !!verify.success && String(item.parentId || "") === String(formData["jform[parent_id]"] || ""),
@@ -5248,26 +5281,33 @@ export class JoomlaClient {
       boxchecked: "1",
       [token.name]: token.value,
     });
-    const successMsg = /item[s]?\s+(published|unpublished)|has been (published|unpublished)/i.test(result.html);
     const errorMsg = this.extractAlertMessage(result.html);
-    const verify = await this.getMenuItem(id);
-    const item = (verify.data || {}) as Record<string, unknown>;
-    const actualState = String(item.published || "");
-    const verified = verify.success && actualState === state;
+
+    // Verify using the list view rather than the edit form. The edit form's jform[published]
+    // field has a fallback default of "1", which causes false-positive verification when the
+    // field isn't captured (Joomla 4 renders it as a custom radio group, not a plain input).
+    const verifyPage = await this.getPage(listUrl);
+    const verifyItems = this.parseMenuItemList(verifyPage.html);
+    const listedItem = verifyItems.find((entry) => entry.id === id);
+    const expectedLabel = state === "1" ? "Published" : "Unpublished";
+    const foundInList = !!listedItem;
+    const actualLabel = listedItem?.state ?? "Unknown";
+    const verified = foundInList && actualLabel === expectedLabel;
 
     return {
       success: verified,
       message: verified
         ? `Menu item ${state === "1" ? "published" : "unpublished"}`
-        : (errorMsg ?? successMsg ? `Menu item state was not verified after ${task}` : "Unknown result"),
+        : (errorMsg ?? `Menu item state was not verified after ${task}`),
       data: this.buildOperationData("menuItem", id, {
-        title: String(item.title || title),
-        state: actualState,
+        title: listedItem?.title ?? title,
+        state: actualLabel === "Published" ? "1" : actualLabel === "Unpublished" ? "0" : "",
         verification: {
           attempted: true,
           preflightVerified: true,
           requestedState: state,
-          actualState,
+          actualState: actualLabel,
+          foundInList,
           verified,
         },
         menuType: actualMenuType,
@@ -5587,8 +5627,24 @@ export class JoomlaClient {
       }
       await new Promise(r => setTimeout(r, 2000));
 
+      // Scroll through the page to trigger lazy-loaded content before capturing
+      await page.evaluate(() => new Promise<void>((resolve) => {
+        const w = globalThis as any;
+        const distance = 200;
+        const delay = 80;
+        const timer = setInterval(() => {
+          w.scrollBy(0, distance);
+          if (w.scrollY + w.innerHeight >= w.document.body.scrollHeight) {
+            clearInterval(timer);
+            w.scrollTo(0, 0);
+            resolve();
+          }
+        }, delay);
+      }));
+      await new Promise(r => setTimeout(r, 500));
+
       const pageTitle = await page.title();
-      const screenshotBuffer = await page.screenshot({ type: 'png', fullPage: false });
+      const screenshotBuffer = await page.screenshot({ type: 'png', fullPage: true });
       const base64 = Buffer.from(screenshotBuffer).toString('base64');
 
       return {
@@ -5772,6 +5828,403 @@ export class JoomlaClient {
         : `Check-in submitted, but ${remaining} item(s) still appear checked out`,
       data: { checkedIn: items, remainingCount: remaining },
     };
+  }
+
+  // ==================== USERS ====================
+
+  async listUsers(search?: string, groupId?: string, state?: string, limit?: number, page?: number): Promise<JoomlaResponse> {
+    const effectiveLimit = Math.min(limit ?? 200, 500);
+    const effectivePage = Math.max(page ?? 1, 1);
+    const limitStart = (effectivePage - 1) * effectiveLimit;
+    const params = new URLSearchParams({
+      option: "com_users",
+      view: "users",
+      limit: String(effectiveLimit),
+      limitstart: String(limitStart),
+    });
+    if (search) params.set("filter[search]", search);
+    if (groupId) params.set("filter[group_id]", groupId);
+    if (state !== undefined && state !== "") params.set("filter[state]", state);
+    const url = this.getAdminUrl(`index.php?${params.toString()}`);
+    const { html } = await this.getPage(url);
+    const users = this.parseUserList(html);
+    return {
+      success: true,
+      message: `Found ${users.length} user(s)${search ? `, search="${search}"` : ""}`,
+      data: users,
+    };
+  }
+
+  private parseUserList(html: string): Array<Record<string, unknown>> {
+    const $ = this.$c(html);
+    const users: Array<Record<string, unknown>> = [];
+    $("tr").each((_, el) => {
+      const $row = $(el);
+      const cid = $row.find("input[name='cid[]']").attr("value");
+      if (!cid) return;
+      const rowHtml = $.html($row) || "";
+      const $cells = $row.find("td");
+      const nameLink = $cells.eq(1).find("a[href*='task=user.edit']").first();
+      const name = nameLink.text().trim();
+      if (!name) return;
+      const username = $cells.eq(2).text().trim();
+      // Enabled = icon-unpublish present (toggle to block = currently enabled)
+      const enabled = /icon-unpublish|users\.block/.test(rowHtml);
+      const groupsText = $cells.eq(5).text().trim();
+      const email = $cells.eq(6).text().trim();
+      const lastVisitDate = $cells.eq(7).text().trim();
+      const registrationDate = $cells.eq(8).text().trim();
+      users.push({ id: cid, name, username, enabled, groups: groupsText, email, lastVisitDate, registrationDate });
+    });
+    return users;
+  }
+
+  async getUser(id: string): Promise<JoomlaResponse> {
+    const editUrl = this.getAdminUrl(`index.php?option=com_users&task=user.edit&id=${id}`);
+    const { html } = await this.getPage(editUrl);
+    const $ = this.$c(html);
+    const nameField = $('input[name="jform[name]"]');
+    if (!nameField.length) {
+      return { success: false, message: `User ${id} not found or access denied` };
+    }
+    const name = nameField.attr("value") || "";
+    const username = $('input[name="jform[username]"]').attr("value") || "";
+    const email = $('input[name="jform[email]"]').attr("value") || "";
+    // block=0 means enabled, block=1 means blocked. Find the checked radio.
+    const blockedRadioValue = $('input[name="jform[block]"][checked]').attr("value") ?? "0";
+    const blocked = blockedRadioValue === "1";
+    const groups: Array<{ id: string; name: string }> = [];
+    $('input[name="jform[groups][]"][checked]').each((_, el) => {
+      const $el = $(el);
+      const groupId = $el.attr("value") || "";
+      const label = $(`label[for="${$el.attr("id")}"]`).text().trim().replace(/^[\s–—|\-]+/, "").trim();
+      if (groupId) groups.push({ id: groupId, name: label });
+    });
+    return {
+      success: true,
+      message: "User retrieved",
+      data: { id, name, username, email, blocked, groups },
+    };
+  }
+
+  async createUser(data: {
+    name: string;
+    username: string;
+    email: string;
+    password: string;
+    groups: string[];
+    block?: boolean;
+  }): Promise<JoomlaResponse> {
+    const newUserUrl = this.getAdminUrl("index.php?option=com_users&view=user&layout=edit");
+    const { html } = await this.getPage(newUserUrl);
+    const token = this.extractCsrfToken(html);
+    if (!token) return { success: false, message: "Failed to extract CSRF token" };
+
+    const baseFields = this.extractFormFields(html);
+    delete baseFields["jform[groups][]"];
+
+    const formData: FormDataMap = {
+      ...baseFields,
+      task: "user.save",
+      "jform[name]": data.name,
+      "jform[username]": data.username,
+      "jform[email]": data.email,
+      "jform[password]": data.password,
+      "jform[password2]": data.password,
+      "jform[block]": data.block ? "1" : "0",
+      "jform[groups][]": data.groups,
+      [token.name]: token.value,
+    };
+
+    const result = await this.postPage(newUserUrl, formData);
+    const saved = result.html.includes("User saved") || result.html.includes("has been saved");
+    const errorMsg = saved ? null : this.extractAlertMessage(result.html);
+    if (errorMsg) return { success: false, message: errorMsg };
+
+    const listed = await this.listUsers(data.email);
+    const found = (listed.data as Array<Record<string, unknown>>)?.find((u) => u.email === data.email);
+    const createdId = found ? String(found.id) : "";
+
+    if (!createdId) {
+      return { success: false, message: "User form submitted but could not verify creation — check the admin backend" };
+    }
+
+    const verify = await this.getUser(createdId);
+    return {
+      success: verify.success,
+      message: verify.success ? `User created (ID: ${createdId})` : "User may have been created but readback failed",
+      data: verify.data,
+    };
+  }
+
+  async updateUser(
+    id: string,
+    data: {
+      name?: string;
+      username?: string;
+      email?: string;
+      password?: string;
+      block?: boolean;
+      groups?: string[];
+    }
+  ): Promise<JoomlaResponse> {
+    const editUrl = this.getAdminUrl(`index.php?option=com_users&task=user.edit&id=${id}`);
+    const { html } = await this.getPage(editUrl);
+    const token = this.extractCsrfToken(html);
+    if (!token) return { success: false, message: "Failed to extract CSRF token" };
+
+    const $ = this.$c(html);
+    const existingGroups: string[] = [];
+    $('input[name="jform[groups][]"][checked]').each((_, el) => {
+      const v = $(el).attr("value");
+      if (v) existingGroups.push(v);
+    });
+
+    const baseFields = this.extractFormFields(html);
+    delete baseFields["jform[groups][]"];
+
+    const formData: FormDataMap = {
+      ...baseFields,
+      task: "user.save",
+      "jform[id]": id,
+      "jform[groups][]": data.groups ?? existingGroups,
+      [token.name]: token.value,
+    };
+
+    if (data.name !== undefined) formData["jform[name]"] = data.name;
+    if (data.username !== undefined) formData["jform[username]"] = data.username;
+    if (data.email !== undefined) formData["jform[email]"] = data.email;
+    if (data.password !== undefined) {
+      formData["jform[password]"] = data.password;
+      formData["jform[password2]"] = data.password;
+    }
+    if (data.block !== undefined) formData["jform[block]"] = data.block ? "1" : "0";
+
+    const result = await this.postPage(editUrl, formData);
+    const saved = result.html.includes("User saved") || result.html.includes("has been saved");
+    const errorMsg = saved ? null : this.extractAlertMessage(result.html);
+    if (errorMsg) return { success: false, message: errorMsg };
+
+    const verify = await this.getUser(id);
+    return {
+      success: verify.success,
+      message: verify.success ? "User updated" : "User form submitted but readback failed",
+      data: verify.data,
+    };
+  }
+
+  // ==================== GROUPS ====================
+
+  async listGroups(): Promise<JoomlaResponse> {
+    const url = this.getAdminUrl("index.php?option=com_users&view=groups&list[limit]=500");
+    const { html } = await this.getPage(url);
+    const groups = this.parseGroupList(html);
+    return { success: true, message: `Found ${groups.length} group(s)`, data: groups };
+  }
+
+  private parseGroupList(html: string): Array<Record<string, unknown>> {
+    const $ = this.$c(html);
+    const groups: Array<Record<string, unknown>> = [];
+    $("tr").each((_, el) => {
+      const $row = $(el);
+      const cid = $row.find("input[name='cid[]']").attr("value");
+      if (!cid) return;
+      const $cells = $row.find("td");
+      const titleCell = $cells.eq(1);
+      const title = titleCell.find("a").first().text().trim();
+      if (!title) return;
+      const rawText = titleCell.text().trim();
+      const depth = (rawText.match(/^[\s–—|\-]+/) || [""])[0].replace(/[^–—|\-]/g, "").length;
+      const enabledUsers = $cells.eq(2).text().trim();
+      const disabledUsers = $cells.eq(3).text().trim();
+      groups.push({ id: cid, title, depth, enabledUsers, disabledUsers });
+    });
+    return groups;
+  }
+
+  async createGroup(data: { title: string; parentId?: string }): Promise<JoomlaResponse> {
+    // GET uses task=group.add but the form action posts to layout=edit&id=0
+    const getUrl = this.getAdminUrl("index.php?option=com_users&task=group.add");
+    const postUrl = this.getAdminUrl("index.php?option=com_users&layout=edit&id=0");
+    const { html } = await this.getPage(getUrl);
+    const token = this.extractCsrfToken(html);
+    if (!token) return { success: false, message: "Failed to extract CSRF token" };
+
+    const formData: FormDataMap = {
+      ...this.extractFormFields(html),
+      task: "group.save",
+      "jform[title]": data.title,
+      "jform[parent_id]": data.parentId ?? "1",
+      [token.name]: token.value,
+    };
+
+    const result = await this.postPage(postUrl, formData);
+    const saved = result.html.includes("Group saved") || result.html.includes("has been saved");
+    const errorMsg = saved ? null : this.extractAlertMessage(result.html);
+    if (errorMsg) return { success: false, message: errorMsg };
+
+    const listed = await this.listGroups();
+    const groups = listed.data as Array<Record<string, unknown>>;
+    const found = groups?.find((g) => g.title === data.title);
+    if (!found) return { success: false, message: "Group submitted but could not verify creation" };
+    return { success: true, message: `Group created (ID: ${found.id})`, data: found };
+  }
+
+  async deleteGroup(id: string): Promise<JoomlaResponse> {
+    const listUrl = this.getAdminUrl("index.php?option=com_users&view=groups");
+    const { html } = await this.getPage(listUrl);
+    const token = this.extractCsrfToken(html);
+    if (!token) return { success: false, message: "Failed to extract CSRF token" };
+
+    const formData: FormDataMap = {
+      task: "groups.delete",
+      "cid[]": [id],
+      boxchecked: "1",
+      [token.name]: token.value,
+    };
+
+    const result = await this.postPage(listUrl, formData);
+    const listed = await this.listGroups();
+    const groups = listed.data as Array<Record<string, unknown>>;
+    const stillExists = groups?.some((g) => String(g.id) === String(id));
+    return {
+      success: !stillExists,
+      message: stillExists
+        ? (this.extractAlertMessage(result.html) ?? "Group deletion submitted but group still exists")
+        : "Group deleted",
+    };
+  }
+
+  // ==================== PERMISSIONS ====================
+
+  private parseRulesFromHtml(html: string): Record<string, Record<string, string>> {
+    const $ = this.$c(html);
+    const rules: Record<string, Record<string, string>> = {};
+    $("select[name]").each((_, el) => {
+      const name = $(el).attr("name") || "";
+      const match = name.match(/jform\[rules\]\[([^\]]+)\]\[([^\]]+)\]/);
+      if (!match) return;
+      const [, action, groupId] = match;
+      const selected = $(el).find("option[selected]").first();
+      const value = selected.length ? (selected.attr("value") ?? "") : "";
+      if (!rules[groupId]) rules[groupId] = {};
+      rules[groupId][action] = value;
+    });
+    return rules;
+  }
+
+  async getCategoryPermissions(id: string, extension = "com_content"): Promise<JoomlaResponse> {
+    const editUrl = this.getAdminUrl(
+      `index.php?option=com_categories&task=category.edit&id=${id}&extension=${extension}`
+    );
+    const { html } = await this.getPage(editUrl);
+    const $ = this.$c(html);
+    const title = $('input[name="jform[title]"]').attr("value") || `Category ${id}`;
+    const rules = this.parseRulesFromHtml(html);
+
+    if (!Object.keys(rules).length) {
+      return {
+        success: false,
+        message: "No permission rules found — category may not exist or permissions tab is not rendered in the HTML",
+      };
+    }
+
+    const groupList = await this.listGroups();
+    const groupNames: Record<string, string> = {};
+    for (const g of (groupList.data as Array<Record<string, unknown>>) ?? []) {
+      groupNames[String(g.id)] = String(g.title);
+    }
+
+    return {
+      success: true,
+      message: `Permissions for category "${title}" (ID: ${id})`,
+      data: { categoryId: id, title, rules, groupNames },
+    };
+  }
+
+  async setCategoryPermissions(
+    id: string,
+    rules: Record<string, Record<string, string>>,
+    extension = "com_content"
+  ): Promise<JoomlaResponse> {
+    const editUrl = this.getAdminUrl(
+      `index.php?option=com_categories&task=category.edit&id=${id}&extension=${extension}`
+    );
+    const { html } = await this.getPage(editUrl);
+    const token = this.extractCsrfToken(html);
+    if (!token) return { success: false, message: "Failed to extract CSRF token" };
+
+    const formData: FormDataMap = {
+      ...this.extractFormFields(html, "item-form"),
+      task: "category.save",
+      [token.name]: token.value,
+    };
+
+    for (const [groupId, actions] of Object.entries(rules)) {
+      for (const [action, value] of Object.entries(actions)) {
+        formData[`jform[rules][${action}][${groupId}]`] = value;
+      }
+    }
+
+    const result = await this.postPage(editUrl, formData);
+    const saved = result.html.includes("Category saved") || result.html.includes("has been saved");
+    const errorMsg = saved ? null : this.extractAlertMessage(result.html);
+    if (errorMsg) return { success: false, message: errorMsg };
+
+    return await this.getCategoryPermissions(id, extension);
+  }
+
+  async getArticlePermissions(id: string): Promise<JoomlaResponse> {
+    const editUrl = this.getAdminUrl(`index.php?option=com_content&task=article.edit&id=${id}`);
+    const { html } = await this.getPage(editUrl);
+    const $ = this.$c(html);
+    const title = $('input[name="jform[title]"]').attr("value") || `Article ${id}`;
+    const rules = this.parseRulesFromHtml(html);
+
+    if (!Object.keys(rules).length) {
+      return {
+        success: false,
+        message: "No permission rules found — article may not exist or does not have article-level ACL configured",
+      };
+    }
+
+    const groupList = await this.listGroups();
+    const groupNames: Record<string, string> = {};
+    for (const g of (groupList.data as Array<Record<string, unknown>>) ?? []) {
+      groupNames[String(g.id)] = String(g.title);
+    }
+
+    return {
+      success: true,
+      message: `Permissions for article "${title}" (ID: ${id})`,
+      data: { articleId: id, title, rules, groupNames },
+    };
+  }
+
+  async setArticlePermissions(id: string, rules: Record<string, Record<string, string>>): Promise<JoomlaResponse> {
+    const editUrl = this.getAdminUrl(`index.php?option=com_content&task=article.edit&id=${id}`);
+    const { html } = await this.getPage(editUrl);
+    const token = this.extractCsrfToken(html);
+    if (!token) return { success: false, message: "Failed to extract CSRF token" };
+
+    const formData: FormDataMap = {
+      ...this.extractFormFields(html, "adminForm"),
+      task: "article.save",
+      [token.name]: token.value,
+    };
+
+    for (const [groupId, actions] of Object.entries(rules)) {
+      for (const [action, value] of Object.entries(actions)) {
+        formData[`jform[rules][${action}][${groupId}]`] = value;
+      }
+    }
+
+    const result = await this.postPage(editUrl, formData);
+    const saved = result.html.includes("Article saved") || result.html.includes("has been saved");
+    const errorMsg = saved ? null : this.extractAlertMessage(result.html);
+    if (errorMsg) return { success: false, message: errorMsg };
+
+    return await this.getArticlePermissions(id);
   }
 
   private decodeHtml(html: string): string {
